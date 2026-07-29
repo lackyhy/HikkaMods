@@ -1,5 +1,3 @@
-
-
 # meta developer: @lackyhyyy666
 
 import aiohttp
