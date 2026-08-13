@@ -2,6 +2,8 @@
 # scope: hikka
 
 import time
+import random
+import json
 import aiohttp
 from .. import loader, utils
 
@@ -13,6 +15,7 @@ class TempMailMod(loader.Module):
     strings = {"name": "TempMail"}
 
     def __init__(self):
+        super().__init__()
         self.config = loader.ModuleConfig()
         # Храним данные созданных аккаунтов в памяти: {chat_id: account_data}
         self.email_accounts = {}
@@ -20,11 +23,16 @@ class TempMailMod(loader.Module):
     async def _api_request(self, method: str, endpoint: str, json_data: dict = None, headers: dict = None):
         """Вспомогательный метод для асинхронных HTTP-запросов"""
         url = f"https://api.mail.tm{endpoint}"
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
-                async with session.request(method, url, json=json_data, headers=headers, timeout=10) as resp:
+                async with session.request(method, url, json=json_data, headers=headers) as resp:
                     if resp.status in [200, 201]:
-                        return await resp.json(), None
+                        try:
+                            data = await resp.json()
+                            return data, None
+                        except (aiohttp.ContentTypeError, json.JSONDecodeError):
+                            return None, "Некорректный формат ответа API"
                     return None, f"Ошибка API ({resp.status})"
             except Exception as e:
                 return None, f"Ошибка сети: {str(e)}"
@@ -37,8 +45,9 @@ class TempMailMod(loader.Module):
             return None, err or "Домены недоступны"
         domain = data["hydra:member"][0]["domain"]
 
-        # 2. Генерируем почту и пароль
-        email = f"user{int(time.time())}@{domain}"
+        # 2. Генерируем уникальную почту и пароль
+        rnd_suffix = random.randint(1000, 9999)
+        email = f"user{int(time.time())}_{rnd_suffix}@{domain}"
         password = "TempPass123!"
 
         # 3. Регистрируем аккаунт
@@ -72,9 +81,10 @@ class TempMailMod(loader.Module):
 
         full_messages = []
         for msg in messages:
-            msg_data, _ = await self._api_request("GET", f"/messages/{msg['id']}", headers=headers)
-            if msg_data:
-                full_messages.append(msg_data)
+            if isinstance(msg, dict) and "id" in msg:
+                msg_data, _ = await self._api_request("GET", f"/messages/{msg['id']}", headers=headers)
+                if msg_data:
+                    full_messages.append(msg_data)
 
         return full_messages, None
 
@@ -142,17 +152,29 @@ class TempMailMod(loader.Module):
 
         response_text = f"📧 <b>Получено писем: {len(messages_list)}</b>\n\n"
         for msg in messages_list:
-            from_addr = utils.escape_html(msg.get("from", {}).get("address", "Неизвестно"))
+            from_info = msg.get("from")
+            if isinstance(from_info, dict):
+                from_addr = from_info.get("address", "Неизвестно")
+            else:
+                from_addr = str(from_info) if from_info else "Неизвестно"
+            from_addr = utils.escape_html(from_addr)
+
             subject = utils.escape_html(msg.get("subject") or "Без темы")
-            body = msg.get("text", "")
+            body = msg.get("text") or msg.get("html") or ""
             preview = utils.escape_html(body[:150] + "..." if len(body) > 150 else body)
 
-            response_text += (
+            item_text = (
                 f"<b>От:</b> <code>{from_addr}</code>\n"
                 f"<b>Тема:</b> {subject}\n"
                 f"<b>Текст:</b>\n<i>{preview}</i>\n"
                 f"───────────────\n"
             )
+
+            if len(response_text) + len(item_text) > 3900:
+                response_text += "\n⚠️ <i>Остальные письма не поместились из-за лимита Telegram...</i>"
+                break
+
+            response_text += item_text
 
         await utils.answer(message, response_text)
 
