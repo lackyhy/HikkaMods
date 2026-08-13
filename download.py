@@ -149,7 +149,7 @@ class YTMusicDownloaderMod(loader.Module):
             await message.client.send_file(
                 entity=message.chat_id,
                 file=audio_path,
-                caption=f"🎧 <b>{title}</b>",
+                caption=f"",
                 attributes=attributes,
                 supports_streaming=True,
                 reply_to=reply_to,
