@@ -1,23 +1,24 @@
 # meta developer: @lackyhyyy666
-# meta version: 1.0.0
+# meta version: 1.0.1
 
 import os
 import re
-import html
-import time
 import asyncio
 import tempfile
 import shutil
 import yt_dlp
+from PIL import Image
+from telethon.tl.types import DocumentAttributeAudio
 from .. import loader, utils
 
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
 
 @loader.tds
 class YTMusicDownloaderMod(loader.Module):
     """Модуль для скачивания треков с YouTube Music и YouTube"""
 
-    __version__ = (1, 0, 0)
+    __version__ = (1, 0, 1)
 
     strings = {
         "name": "YTMusicDownloader",
@@ -48,14 +49,17 @@ class YTMusicDownloaderMod(loader.Module):
             else:
                 url = f"ytsearch1:{args}"
         else:
-            # Ищем сообщения-кандидаты: сначала прямой реплай, затем главный пост ветки комментариев
             candidates = []
             reply = await message.get_reply_message()
             if reply:
                 candidates.append(reply)
                 reply_to = reply.id
 
-            top_id = getattr(message, "reply_to_top_id", None) or getattr(getattr(message, "reply_to", None), "reply_to_top_id", None) or getattr(message, "reply_to_msg_id", None)
+            top_id = (
+                getattr(message, "reply_to_top_id", None)
+                or getattr(getattr(message, "reply_to", None), "reply_to_top_id", None)
+                or getattr(message, "reply_to_msg_id", None)
+            )
             if top_id:
                 if not reply or reply.id != top_id:
                     try:
@@ -71,14 +75,12 @@ class YTMusicDownloaderMod(loader.Module):
                 if not target_msg:
                     continue
 
-                # 1. Извлекаем URL из текста сообщения (YouTube, YT Music, Spotify и др.)
                 text = target_msg.raw_text or target_msg.text or ""
                 url_match = re.search(r'https?://[^\s]+', text)
                 if url_match:
                     url = url_match.group(0)
                     break
 
-                # 2. Проверяем теги / атрибуты аудио файла
                 if target_msg.media:
                     document = getattr(target_msg.media, "document", None)
                     if document and hasattr(document, "attributes"):
@@ -93,7 +95,6 @@ class YTMusicDownloaderMod(loader.Module):
                 if url:
                     break
 
-                # 3. Берем первую строчку текста или описание
                 if text:
                     clean_text = text.split("\n")[0].strip()
                     if clean_text:
@@ -107,87 +108,27 @@ class YTMusicDownloaderMod(loader.Module):
         if not reply_to and getattr(message, "reply_to_msg_id", None):
             reply_to = message.reply_to_msg_id
 
-        # Изменяем сообщение на статус загрузки
+        # Меняем текст исходного сообщения на статус загрузки
         message = await utils.answer(message, self.strings("downloading"))
-
-        loop = asyncio.get_event_loop()
-        last_edit_time = 0
-
-        def progress_hook(d):
-            nonlocal last_edit_time
-            if d['status'] == 'downloading':
-                now = time.time()
-                if now - last_edit_time > 3:
-                    last_edit_time = now
-                    percent_str = d.get('_percent_str', '').strip()
-                    speed_str = d.get('_speed_str', '').strip()
-                    eta_str = d.get('_eta_str', '').strip()
-                    
-                    percent = ANSI_ESCAPE.sub('', percent_str)
-                    speed = ANSI_ESCAPE.sub('', speed_str)
-                    eta = ANSI_ESCAPE.sub('', eta_str)
-
-                    try:
-                        p = float(percent.replace('%', ''))
-                    except ValueError:
-                        p = 0.0
-                    
-                    filled = int(p / 10)
-                    bar = "█" * filled + "▒" * (10 - filled)
-
-                    text = f"⏳ <b>Скачивание...</b>\n\n[{bar}] {percent}\n<b>Скорость:</b> <code>{speed}</code>\n<b>Осталось:</b> <code>{eta}</code>"
-                    
-                    async def safe_edit():
-                        try:
-                            await message.edit(text)
-                        except Exception:
-                            pass
-                    
-                    asyncio.run_coroutine_threadsafe(safe_edit(), loop)
 
         if url.startswith("http") and "music.youtube.com" in url:
             url = url.replace("music.youtube.com", "www.youtube.com")
 
-        class YtLogger:
-            def __init__(self):
-                self.logs = []
-            def debug(self, msg):
-                self.logs.append(msg)
-                if len(self.logs) > 15: self.logs.pop(0)
-            def warning(self, msg):
-                self.logs.append(msg)
-                if len(self.logs) > 15: self.logs.pop(0)
-            def error(self, msg):
-                self.logs.append(msg)
-                if len(self.logs) > 15: self.logs.pop(0)
-
-        yt_logger = YtLogger()
-
+        loop = asyncio.get_event_loop()
         temp_dir = None
         audio_path = None
         thumb_path = None
+
         try:
             temp_dir, audio_path, title, performer, duration, thumb_path = await loop.run_in_executor(
-                None, self._download_audio, url, progress_hook, yt_logger
+                None, self._download_audio, url
             )
         except Exception as e:
-            yt_version = getattr(yt_dlp, "__version__", "unknown")
-            
-            # Удаляем ANSI escape codes из ошибки
             raw_err = ANSI_ESCAPE.sub('', str(e))
-            
-            err_msg = f"{raw_err}\n\n<b>yt-dlp version:</b> <code>{yt_version}</code>"
-            if yt_logger.logs:
-                clean_logs = [ANSI_ESCAPE.sub('', x) for x in yt_logger.logs]
-                err_logs = "\n".join(clean_logs)
-                err_msg += f"\n\n<b>Логи yt-dlp:</b>\n<pre>{html.escape(err_logs)}</pre>"
-            
-            await utils.answer(message, self.strings("error").format(err_msg))
+            await utils.answer(message, self.strings("error").format(raw_err))
             return
 
         try:
-            from telethon.tl.types import DocumentAttributeAudio
-
             attributes = [
                 DocumentAttributeAudio(
                     duration=duration,
@@ -203,7 +144,6 @@ class YTMusicDownloaderMod(loader.Module):
                     valid_thumb = thumb_path
                 else:
                     try:
-                        from PIL import Image
                         jpg_thumb = os.path.splitext(thumb_path)[0] + "_conv.jpg"
                         with Image.open(thumb_path) as im:
                             im.convert("RGB").save(jpg_thumb, "JPEG")
@@ -211,30 +151,31 @@ class YTMusicDownloaderMod(loader.Module):
                     except Exception:
                         valid_thumb = None
 
-            # Отправляем аудио файл отдельным новым сообщением
+            # Отправляем файл
             await message.client.send_file(
                 entity=message.chat_id,
                 file=audio_path,
-                caption=f"",
+                caption="",
                 attributes=attributes,
                 supports_streaming=True,
                 reply_to=reply_to,
                 thumb=valid_thumb,
             )
 
-            # Удаляем исходное сообщение с прогрессом
+            # Удаляем сообщение со статусом загрузки
             try:
                 await message.delete()
             except Exception:
                 pass
 
         except Exception as e:
-            await message.respond(self.strings("error").format(str(e)))
+            raw_err = ANSI_ESCAPE.sub('', str(e))
+            await utils.answer(message, self.strings("error").format(raw_err))
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def _download_audio(self, url: str, progress_hook=None, logger=None):
+    def _download_audio(self, url: str):
         temp_dir = tempfile.mkdtemp()
         out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
@@ -248,7 +189,7 @@ class YTMusicDownloaderMod(loader.Module):
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "web"],
-                    "client": ["android", "web"]
+                    "client": ["android", "web"],
                 }
             },
             "http_headers": {
@@ -265,16 +206,9 @@ class YTMusicDownloaderMod(loader.Module):
                     "add_metadata": True,
                 },
             ],
-            "quiet": False,
-            "no_warnings": False,
-            "verbose": True
+            "quiet": True,
+            "no_warnings": True,
         }
-
-        if logger:
-            ydl_opts["logger"] = logger
-
-        if progress_hook:
-            ydl_opts["progress_hooks"] = [progress_hook]
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -291,7 +225,6 @@ class YTMusicDownloaderMod(loader.Module):
             audio_path = os.path.splitext(filename)[0] + ".mp3"
 
             if not os.path.exists(audio_path):
-                # Фолбэк, если расширение не mp3
                 if os.path.exists(filename):
                     audio_path = filename
                 else:
@@ -301,7 +234,6 @@ class YTMusicDownloaderMod(loader.Module):
             performer = info.get("artist") or info.get("uploader") or info.get("channel") or ""
             duration = int(info.get("duration") or 0)
 
-            # Ищем обложку (thumbnail)
             thumb_path = None
             for ext in ["jpg", "jpeg", "webp", "png"]:
                 candidate = os.path.splitext(filename)[0] + f".{ext}"
@@ -310,4 +242,3 @@ class YTMusicDownloaderMod(loader.Module):
                     break
 
             return temp_dir, audio_path, title, performer, duration, thumb_path
-
