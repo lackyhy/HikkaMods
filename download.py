@@ -2,6 +2,7 @@
 
 import os
 import re
+import html
 import time
 import asyncio
 import tempfile
@@ -166,8 +167,6 @@ class YTMusicDownloaderMod(loader.Module):
                 None, self._download_audio, url, progress_hook, yt_logger
             )
         except Exception as e:
-            import html
-            import re
             yt_version = getattr(yt_dlp, "__version__", "unknown")
             
             # Удаляем ANSI escape codes из ошибки
