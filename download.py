@@ -140,6 +140,9 @@ class YTMusicDownloaderMod(loader.Module):
                     
                     asyncio.run_coroutine_threadsafe(safe_edit(), loop)
 
+        if url.startswith("http") and "music.youtube.com" in url:
+            url = url.replace("music.youtube.com", "www.youtube.com")
+
         temp_dir = None
         audio_path = None
         thumb_path = None
@@ -212,8 +215,12 @@ class YTMusicDownloaderMod(loader.Module):
             "source_address": "0.0.0.0",
             "extractor_args": {
                 "youtube": {
+                    "player_client": ["android", "ios", "tv", "web"],
                     "client": ["android", "ios", "tv", "web"]
                 }
+            },
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             },
             "postprocessors": [
                 {
