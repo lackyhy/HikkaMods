@@ -10,6 +10,8 @@ import shutil
 import yt_dlp
 from .. import loader, utils
 
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
 @loader.tds
 class YTMusicDownloaderMod(loader.Module):
     """Модуль для скачивания треков с YouTube Music и YouTube"""
@@ -118,10 +120,9 @@ class YTMusicDownloaderMod(loader.Module):
                     speed_str = d.get('_speed_str', '').strip()
                     eta_str = d.get('_eta_str', '').strip()
                     
-                    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-                    percent = ansi_escape.sub('', percent_str)
-                    speed = ansi_escape.sub('', speed_str)
-                    eta = ansi_escape.sub('', eta_str)
+                    percent = ANSI_ESCAPE.sub('', percent_str)
+                    speed = ANSI_ESCAPE.sub('', speed_str)
+                    eta = ANSI_ESCAPE.sub('', eta_str)
 
                     try:
                         p = float(percent.replace('%', ''))
@@ -170,12 +171,11 @@ class YTMusicDownloaderMod(loader.Module):
             yt_version = getattr(yt_dlp, "__version__", "unknown")
             
             # Удаляем ANSI escape codes из ошибки
-            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-            raw_err = ansi_escape.sub('', str(e))
+            raw_err = ANSI_ESCAPE.sub('', str(e))
             
             err_msg = f"{raw_err}\n\n<b>yt-dlp version:</b> <code>{yt_version}</code>"
             if yt_logger.logs:
-                clean_logs = [ansi_escape.sub('', x) for x in yt_logger.logs]
+                clean_logs = [ANSI_ESCAPE.sub('', x) for x in yt_logger.logs]
                 err_logs = "\n".join(clean_logs)
                 err_msg += f"\n\n<b>Логи yt-dlp:</b>\n<pre>{html.escape(err_logs)}</pre>"
             
