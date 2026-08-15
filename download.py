@@ -143,15 +143,34 @@ class YTMusicDownloaderMod(loader.Module):
         if url.startswith("http") and "music.youtube.com" in url:
             url = url.replace("music.youtube.com", "www.youtube.com")
 
+        class YtLogger:
+            def __init__(self):
+                self.logs = []
+            def debug(self, msg):
+                if "403" in msg or "error" in msg.lower():
+                    self.logs.append(msg)
+            def warning(self, msg):
+                self.logs.append(msg)
+            def error(self, msg):
+                self.logs.append(msg)
+
+        yt_logger = YtLogger()
+
         temp_dir = None
         audio_path = None
         thumb_path = None
         try:
             temp_dir, audio_path, title, performer, duration, thumb_path = await loop.run_in_executor(
-                None, self._download_audio, url, progress_hook
+                None, self._download_audio, url, progress_hook, yt_logger
             )
         except Exception as e:
-            await utils.answer(message, self.strings("error").format(str(e)))
+            yt_version = getattr(yt_dlp, "__version__", "unknown")
+            err_msg = f"{str(e)}\n\nyt-dlp version: {yt_version}"
+            if yt_logger.logs:
+                err_logs = "\n".join(yt_logger.logs[-5:])
+                err_msg += f"\n\nЛоги yt-dlp:\n{err_logs}"
+            
+            await utils.answer(message, self.strings("error").format(err_msg))
             return
 
         try:
@@ -203,7 +222,7 @@ class YTMusicDownloaderMod(loader.Module):
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def _download_audio(self, url: str, progress_hook=None):
+    def _download_audio(self, url: str, progress_hook=None, logger=None):
         temp_dir = tempfile.mkdtemp()
         out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
@@ -234,9 +253,13 @@ class YTMusicDownloaderMod(loader.Module):
                     "add_metadata": True,
                 },
             ],
-            "quiet": True,
-            "no_warnings": True,
+            "quiet": False,
+            "no_warnings": False,
+            "verbose": True
         }
+
+        if logger:
+            ydl_opts["logger"] = logger
 
         if progress_hook:
             ydl_opts["progress_hooks"] = [progress_hook]
