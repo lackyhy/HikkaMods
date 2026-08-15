@@ -147,12 +147,14 @@ class YTMusicDownloaderMod(loader.Module):
             def __init__(self):
                 self.logs = []
             def debug(self, msg):
-                if "403" in msg or "error" in msg.lower():
-                    self.logs.append(msg)
+                self.logs.append(msg)
+                if len(self.logs) > 15: self.logs.pop(0)
             def warning(self, msg):
                 self.logs.append(msg)
+                if len(self.logs) > 15: self.logs.pop(0)
             def error(self, msg):
                 self.logs.append(msg)
+                if len(self.logs) > 15: self.logs.pop(0)
 
         yt_logger = YtLogger()
 
@@ -164,11 +166,19 @@ class YTMusicDownloaderMod(loader.Module):
                 None, self._download_audio, url, progress_hook, yt_logger
             )
         except Exception as e:
+            import html
+            import re
             yt_version = getattr(yt_dlp, "__version__", "unknown")
-            err_msg = f"{str(e)}\n\nyt-dlp version: {yt_version}"
+            
+            # Удаляем ANSI escape codes из ошибки
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            raw_err = ansi_escape.sub('', str(e))
+            
+            err_msg = f"{raw_err}\n\n<b>yt-dlp version:</b> <code>{yt_version}</code>"
             if yt_logger.logs:
-                err_logs = "\n".join(yt_logger.logs[-5:])
-                err_msg += f"\n\nЛоги yt-dlp:\n{err_logs}"
+                clean_logs = [ansi_escape.sub('', x) for x in yt_logger.logs]
+                err_logs = "\n".join(clean_logs)
+                err_msg += f"\n\n<b>Логи yt-dlp:</b>\n<pre>{html.escape(err_logs)}</pre>"
             
             await utils.answer(message, self.strings("error").format(err_msg))
             return
