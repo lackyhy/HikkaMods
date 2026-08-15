@@ -1,4 +1,5 @@
 # meta developer: @lackyhyyy666
+# meta version: 1.0.0
 
 import os
 import re
@@ -15,6 +16,8 @@ ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 @loader.tds
 class YTMusicDownloaderMod(loader.Module):
     """Модуль для скачивания треков с YouTube Music и YouTube"""
+
+    __version__ = (1, 0, 0)
 
     strings = {
         "name": "YTMusicDownloader",
