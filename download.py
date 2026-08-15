@@ -1,5 +1,5 @@
 # meta developer: @lackyhyyy666
-# meta version: 1.0.1
+# meta version: 1.0.2
 
 import os
 import re
@@ -18,7 +18,7 @@ ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 class YTMusicDownloaderMod(loader.Module):
     """Модуль для скачивания треков с YouTube Music и YouTube"""
 
-    __version__ = (1, 0, 1)
+    __version__ = (1, 0, 2)
 
     strings = {
         "name": "YTMusicDownloader",
@@ -33,12 +33,54 @@ class YTMusicDownloaderMod(loader.Module):
         "error": "❌ <b>Ошибка при скачивании:</b>\n<code>{}</code>",
     }
 
+    def __init__(self):
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "allowed_ids",
+                [],
+                "ID пользователей, которым разрешено использовать команду .dy",
+                validator=loader.validators.Series(loader.validators.Integer()),
+            ),
+        )
+
+    def _is_allowed(self, message) -> bool:
+        if getattr(message, "out", False):
+            return True
+
+        sender_id = getattr(message, "sender_id", None)
+        if not sender_id:
+            return False
+
+        owner_id = getattr(self, "tg_id", None) or getattr(getattr(self, "_client", None), "tg_id", None)
+        if owner_id and sender_id == owner_id:
+            return True
+
+        raw_allowed = self.config["allowed_ids"]
+        if not raw_allowed:
+            return False
+
+        if isinstance(raw_allowed, (int, str)):
+            raw_allowed = [raw_allowed]
+
+        allowed_set = set()
+        for item in raw_allowed:
+            if isinstance(item, int):
+                allowed_set.add(item)
+            elif isinstance(item, str):
+                for sub in str(item).replace(",", " ").split():
+                    if sub.lstrip("-").isdigit():
+                        allowed_set.add(int(sub))
+
+        return sender_id in allowed_set
+
     @loader.command(
         ru_doc="[ссылка / название / реплай / в комментариях] - Скачать аудиозапись/трек с YouTube Music или YouTube",
         en_doc="[link / title / reply / in comments] - Download audio/track from YouTube Music or YouTube",
     )
     async def dycmd(self, message):
         """[link / title / reply / in comments] - Download track from YouTube Music / YouTube"""
+        if not self._is_allowed(message):
+            return
         args = utils.get_args_raw(message).strip()
         url = ""
         reply_to = None
@@ -105,8 +147,11 @@ class YTMusicDownloaderMod(loader.Module):
             await utils.answer(message, self.strings("no_url"))
             return
 
-        if not reply_to and getattr(message, "reply_to_msg_id", None):
-            reply_to = message.reply_to_msg_id
+        if not reply_to:
+            if getattr(message, "reply_to_msg_id", None):
+                reply_to = message.reply_to_msg_id
+            elif not getattr(message, "out", False):
+                reply_to = message.id
 
         # Меняем текст исходного сообщения на статус загрузки
         message = await utils.answer(message, self.strings("downloading"))
