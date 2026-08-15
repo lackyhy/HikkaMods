@@ -2,6 +2,7 @@
 
 import os
 import re
+import time
 import asyncio
 import tempfile
 import shutil
@@ -100,23 +101,54 @@ class YTMusicDownloaderMod(loader.Module):
         if not reply_to and getattr(message, "reply_to_msg_id", None):
             reply_to = message.reply_to_msg_id
 
-        # Отправляем отдельное сообщение со статусом загрузки
-        status_msg = await message.respond(self.strings("downloading"))
+        # Изменяем сообщение на статус загрузки
+        message = await utils.answer(message, self.strings("downloading"))
 
         loop = asyncio.get_event_loop()
+        last_edit_time = 0
+
+        def progress_hook(d):
+            nonlocal last_edit_time
+            if d['status'] == 'downloading':
+                now = time.time()
+                if now - last_edit_time > 3:
+                    last_edit_time = now
+                    percent_str = d.get('_percent_str', '').strip()
+                    speed_str = d.get('_speed_str', '').strip()
+                    eta_str = d.get('_eta_str', '').strip()
+                    
+                    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                    percent = ansi_escape.sub('', percent_str)
+                    speed = ansi_escape.sub('', speed_str)
+                    eta = ansi_escape.sub('', eta_str)
+
+                    try:
+                        p = float(percent.replace('%', ''))
+                    except ValueError:
+                        p = 0.0
+                    
+                    filled = int(p / 10)
+                    bar = "█" * filled + "▒" * (10 - filled)
+
+                    text = f"⏳ <b>Скачивание...</b>\n\n[{bar}] {percent}\n<b>Скорость:</b> <code>{speed}</code>\n<b>Осталось:</b> <code>{eta}</code>"
+                    
+                    async def safe_edit():
+                        try:
+                            await message.edit(text)
+                        except Exception:
+                            pass
+                    
+                    asyncio.run_coroutine_threadsafe(safe_edit(), loop)
+
         temp_dir = None
         audio_path = None
         thumb_path = None
         try:
             temp_dir, audio_path, title, performer, duration, thumb_path = await loop.run_in_executor(
-                None, self._download_audio, url
+                None, self._download_audio, url, progress_hook
             )
         except Exception as e:
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-            await message.respond(self.strings("error").format(str(e)))
+            await utils.answer(message, self.strings("error").format(str(e)))
             return
 
         try:
@@ -156,14 +188,9 @@ class YTMusicDownloaderMod(loader.Module):
                 thumb=valid_thumb,
             )
 
-            # Удаляем исходную команду юзера и статусное сообщение
+            # Удаляем исходное сообщение с прогрессом
             try:
                 await message.delete()
-            except Exception:
-                pass
-
-            try:
-                await status_msg.delete()
             except Exception:
                 pass
 
@@ -173,7 +200,7 @@ class YTMusicDownloaderMod(loader.Module):
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def _download_audio(self, url: str):
+    def _download_audio(self, url: str, progress_hook=None):
         temp_dir = tempfile.mkdtemp()
         out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
@@ -182,6 +209,12 @@ class YTMusicDownloaderMod(loader.Module):
             "outtmpl": out_template,
             "writethumbnail": True,
             "nocheckcertificate": True,
+            "source_address": "0.0.0.0",
+            "extractor_args": {
+                "youtube": {
+                    "client": ["android", "ios", "tv", "web"]
+                }
+            },
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
@@ -196,6 +229,9 @@ class YTMusicDownloaderMod(loader.Module):
             "quiet": True,
             "no_warnings": True,
         }
+
+        if progress_hook:
+            ydl_opts["progress_hooks"] = [progress_hook]
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
