@@ -208,15 +208,16 @@ class YTMusicDownloaderMod(loader.Module):
         out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": out_template,
             "writethumbnail": True,
             "nocheckcertificate": True,
+            "cachedir": False,
             "source_address": "0.0.0.0",
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["android", "ios", "tv", "web"],
-                    "client": ["android", "ios", "tv", "web"]
+                    "player_client": ["android", "web"],
+                    "client": ["android", "web"]
                 }
             },
             "http_headers": {
