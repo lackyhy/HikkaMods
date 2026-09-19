@@ -124,6 +124,23 @@
 
 ---
 
+### ❌⭕️ 7. TicTacToe (`TicTacToe.py`)
+
+**Описание:** Интерактивные Крестики-Нолики на инлайн-кнопках в Telegram. Поддерживает игру с человеком (указав юзернейм/ID/реплай) и с небывалым умным ИИ (без аргументов). Сверху выводится панель участников и отображение чей сейчас ход.
+
+#### 📥 Команда установки:
+
+```text
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TicTacToe.py
+```
+
+#### 🛠 Команды:
+
+- `.cc` — Начать игру в Крестики-Нолики с ИИ (компьютером).
+- `.cc [@username / ID / реплай]` — Начать игру в Крестики-Нолики с человеком.
+
+---
+
 ## 🚀 Быстрая установка всех модулей разом
 
 Отправьте в Telegram следующие команды по очереди:
@@ -135,4 +152,6 @@
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/text.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/usdt2rub.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/sinf.py
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TicTacToe.py
 ```
+
