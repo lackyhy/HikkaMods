@@ -141,6 +141,24 @@
 
 ---
 
+### 🪙 8. CoinFlip (`coin.py`)
+
+**Описание:** Анимированный модуль для подбрасывания монетки (Орёл или Решка). Поддерживает одиночные броски с выбором ставки, проверку угадывания, массовые подбрасывания монет и инлайн-кнопку повторного броска.
+
+#### 📥 Команда установки:
+
+```text
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/coin.py
+```
+
+#### 🛠 Команды:
+
+- `.coin` — Подбросить монетку (Орёл / Решка).
+- `.coin [орёл / решка]` — Подбросить монетку с угадыванием результата.
+- `.coin [число]` — Подбросить сразу несколько монет (например `.coin 10`) и вывести статистику.
+
+---
+
 ## 🚀 Быстрая установка всех модулей разом
 
 Отправьте в Telegram следующие команды по очереди:
@@ -153,5 +171,7 @@
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/usdt2rub.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/sinf.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TicTacToe.py
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/coin.py
 ```
+
 
