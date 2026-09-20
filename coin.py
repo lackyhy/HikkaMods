@@ -7,11 +7,10 @@ from .. import loader, utils
 
 @loader.tds
 class CoinFlipMod(loader.Module):
-    """Модуль для подбрасывания монетки (Орёл или Решка)."""
+    """Модуль для быстрой анимированной игры в подбрасывание монетки (Орёл или Решка)."""
 
     strings = {
         "name": "CoinFlip",
-        "flipping": "🪙 <b>Подбрасываем монетку...</b>\n<i>🔄 *дзинь-дзинь* (монетка крутится)...</i>",
         "heads": "🦅 <b>Орёл</b>",
         "tails": "🪙 <b>Решка</b>",
         "edge": "🪙 <b>Монетка встала на ребро! 🤯</b>",
@@ -30,8 +29,8 @@ class CoinFlipMod(loader.Module):
     }
 
     @loader.command(
-        ru_doc="[орёл/решка / количество] — Подбросить монетку (со ставкой/выбором или указав количество)",
-        en_doc="[heads/tails / amount] — Flip a coin (with guess or amount)",
+        ru_doc="[орёл/решка / количество] — Быстрое анимированное подбрасывание монетки (1-2 сек)",
+        en_doc="[heads/tails / amount] — Fast animated coin flip (1-2 sec)",
     )
     async def coincmd(self, message):
         """[орёл/решка / количество] — Подбросить монетку"""
@@ -47,8 +46,14 @@ class CoinFlipMod(loader.Module):
                 await utils.answer(message, "⚠️ Максимальное количество монет за раз — 100!")
                 return
 
-            await utils.answer(message, self.strings("flipping"))
-            await asyncio.sleep(0.8)
+            frames = [
+                f"🪙 <b>Подбрасываем {count} монет...</b>\n<i>🌕 (монетки взлетают вверх)...</i>",
+                f"🪙 <b>Подбрасываем {count} монет...</b>\n<i>🌖 (крутятся в воздухе)...</i>",
+                f"🪙 <b>Подбрасываем {count} монет...</b>\n<i>🌘 (падают обратно)...</i>",
+            ]
+            for frame in frames:
+                await utils.answer(message, frame)
+                await asyncio.sleep(0.25)
 
             heads_count = 0
             tails_count = 0
@@ -99,9 +104,16 @@ class CoinFlipMod(loader.Module):
             guess = "tails"
             guess_title = "🪙 Решка"
 
-        # Одиночный бросок монетки
-        await utils.answer(message, self.strings("flipping"))
-        await asyncio.sleep(0.8)
+        # Быстрая кратковременная анимация (4 кадра по 0.25 сек = 1.0 сек)
+        frames = [
+            "🪙 <b>Подбрасываем монетку...</b>\n<i>🌕 (монетка взлетает вверх)...</i>",
+            "🪙 <b>Подбрасываем монетку...</b>\n<i>🌖 (крутится в воздухе)...</i>",
+            "🪙 <b>Подбрасываем монетку...</b>\n<i>🌗 (переворачивается)...</i>",
+            "🪙 <b>Подбрасываем монетку...</b>\n<i>🌘 (приземляется)...</i>",
+        ]
+        for frame in frames:
+            await utils.answer(message, frame)
+            await asyncio.sleep(0.25)
 
         roll = random.random()
         if roll < 0.001:
@@ -145,7 +157,7 @@ class CoinFlipMod(loader.Module):
             await utils.answer(message, text)
 
     async def _flip_callback(self, call, mode: str):
-        await call.answer("🪙 Подбрасываем монетку...")
+        await call.answer("🪙 Монетка крутится...")
 
         if mode.startswith("multi_"):
             count = int(mode.split("_")[1])
