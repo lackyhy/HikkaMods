@@ -34,11 +34,11 @@ class CoinFlipMod(loader.Module):
     )
     async def coincmd(self, message):
         """[орёл/решка / количество] — Подбросить монетку"""
-        args = utils.get_args_raw(message).strip().lower()
+        raw_args = utils.get_args_raw(message).strip().lower()
 
         # Проверка на количество монет N
-        if args.isdigit():
-            count = int(args)
+        if raw_args.isdigit():
+            count = int(raw_args)
             if count <= 0:
                 await utils.answer(message, "⚠️ Укажите количество монет больше 0!")
                 return
@@ -53,7 +53,7 @@ class CoinFlipMod(loader.Module):
             ]
             for frame in frames:
                 await utils.answer(message, frame)
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.2)
 
             heads_count = 0
             tails_count = 0
@@ -73,6 +73,8 @@ class CoinFlipMod(loader.Module):
                 count, heads_count, tails_count, edge_str
             )
 
+            await utils.answer(message, res_text)
+
             markup = [
                 [
                     {
@@ -91,20 +93,23 @@ class CoinFlipMod(loader.Module):
                     always_allow=True,
                 )
             except Exception:
-                await utils.answer(message, res_text)
+                pass
             return
 
-        # Проверка на выбор орёл / решка
+        # Поддержка любых вариантов названия: "орел", "орёл", "орелик", "о", "h", "heads" и др.
+        args_clean = raw_args.replace("ё", "е")
         guess = None
         guess_title = None
-        if args in ["орёл", "орел", "oрел", "орeл", "heads", "head", "о"]:
-            guess = "heads"
-            guess_title = "🦅 Орёл"
-        elif args in ["решка", "решкa", "tails", "tail", "р"]:
-            guess = "tails"
-            guess_title = "🪙 Решка"
 
-        # Быстрая кратковременная анимация (4 кадра по 0.25 сек = 1.0 сек)
+        if args_clean:
+            if any(args_clean.startswith(x) for x in ["орел", "орл", "head", "о", "h"]):
+                guess = "heads"
+                guess_title = "🦅 Орёл"
+            elif any(args_clean.startswith(x) for x in ["решк", "tail", "р", "t"]):
+                guess = "tails"
+                guess_title = "🪙 Решка"
+
+        # Быстрая анимация полета монетки (4 кадра по 0.20 сек = 0.8 сек)
         frames = [
             "🪙 <b>Подбрасываем монетку...</b>\n<i>🌕 (монетка взлетает вверх)...</i>",
             "🪙 <b>Подбрасываем монетку...</b>\n<i>🌖 (крутится в воздухе)...</i>",
@@ -113,7 +118,7 @@ class CoinFlipMod(loader.Module):
         ]
         for frame in frames:
             await utils.answer(message, frame)
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.20)
 
         roll = random.random()
         if roll < 0.001:
@@ -135,6 +140,9 @@ class CoinFlipMod(loader.Module):
 
         text = self.strings("result_single").format(outcome_text, guess_status).strip()
 
+        # Моментальная гарантированная сменяемость текста результат
+        await utils.answer(message, text)
+
         cb_arg = f"single_{guess}" if guess else "single_none"
         markup = [
             [
@@ -154,7 +162,7 @@ class CoinFlipMod(loader.Module):
                 always_allow=True,
             )
         except Exception:
-            await utils.answer(message, text)
+            pass
 
     async def _flip_callback(self, call, mode: str):
         await call.answer("🪙 Монетка крутится...")
