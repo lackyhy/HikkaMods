@@ -121,6 +121,8 @@
     - `.sinf 55.7558, 37.6173`
     - `.sinf 0x71C7656EC7ab88b098defB751B7401B5f6d8976F`
     - `.sinf 00:1A:2B:3C:4D:5E`
+- `.ip6 [IPv6 / реплай]` — Конвертация IPv6-адреса в IPv4 (поддерживает IPv4-Mapped, 6to4, Teredo, NAT64 и сетевой Reverse DNS поиск).
+  - _Примеры:_ `.ip6 ::ffff:192.168.1.1` или `.ip6 2002:c000:0280::`
 
 ---
 
@@ -159,6 +161,26 @@
 
 ---
 
+### 🔘 9. InlineButtons (`btn.py`)
+
+**Описание:** Модуль для удобного создания сообщений с интерактивными инлайн-кнопками снизу. Поддерживает ссылки, нумерованные кнопки `[1. ] [2. ]`, алерты (Callback Toast) и кнопки для репоста (share).
+
+#### 📥 Команда установки:
+
+```text
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/btn.py
+```
+
+#### 🛠 Команды:
+
+- `.btn [текст / реплай] [1. Название - https://ссылка.com]` — Создать сообщение с нумерованными инлайн-кнопками снизу.
+  - _Примеры:_
+    - `.btn Текст сообщения [1. Google-https://google.com] [2. Yandex-yandex.ru]`
+    - `.btn Мой текст [1. ] [2. ]`
+    - `.btn [1. Яндекс - https://yandex.ru]` *(реплаем на сообщение)*
+
+---
+
 ## 🚀 Быстрая установка всех модулей разом
 
 Отправьте в Telegram следующие команды по очереди:
@@ -172,6 +194,8 @@
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/sinf.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TicTacToe.py
 .dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/coin.py
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/btn.py
 ```
+
 
 

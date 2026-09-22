@@ -2,6 +2,7 @@
 
 import asyncio
 import html
+import ipaddress
 import re
 import socket
 from datetime import datetime, timezone
@@ -62,7 +63,8 @@ class SinfMod(loader.Module):
                 "• <b>Физический адрес:</b> <code>.sinf Москва, Тверская 1</code>\n"
                 "• <b>Координаты:</b> <code>.sinf 55.7558, 37.6173</code>\n"
                 "• <b>Крипто-кошелек:</b> <code>.sinf 0x71C...</code> (BTC, ETH, TON, TRX, LTC)\n"
-                "• <b>MAC-адрес:</b> <code>.sinf 00:1A:2B:3C:4D:5E</code>",
+                "• <b>MAC-адрес:</b> <code>.sinf 00:1A:2B:3C:4D:5E</code>\n"
+                "• <b>Конвертация IPv6 ➔ IPv4:</b> <code>.ip6 ::ffff:192.168.1.1</code>",
             )
             return
 
@@ -584,4 +586,218 @@ class SinfMod(loader.Module):
         return (
             f"<b>🔌 Информация о MAC-адресе:</b> <code>{html.escape(mac)}</code>\n\n"
             f"• <b>Статус:</b> Формат верен, но вендор не найден в публичной базе OUI."
+        )
+
+    @loader.command()
+    async def ip6cmd(self, message):
+        """[IPv6-адрес / реплай] — Конвертация IPv6 в IPv4 (IPv4-Mapped, 6to4, Teredo, NAT64, DNS-поиск)"""
+        args = utils.get_args_raw(message)
+
+        if not args:
+            reply = await message.get_reply_message()
+            if reply and reply.raw_text:
+                ipv6_match = re.search(
+                    r"(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|"
+                    r"(?:[0-9a-fA-F]{1,4}:){1,7}:|"
+                    r"::(?:[0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}|"
+                    r"::ffff:(?:\d{1,3}\.){3}\d{1,3}|"
+                    r"2002:(?:[0-9a-fA-F]{1,4}:){1,6}",
+                    reply.raw_text,
+                )
+                if ipv6_match:
+                    args = ipv6_match.group(0)
+                else:
+                    args = reply.raw_text.strip()
+
+        if not args:
+            await utils.answer(
+                message,
+                "<b>⚠️ Укажите IPv6-адрес или ответьте на сообщение с IPv6!</b>\n\n"
+                "<i>Примеры использования:</i>\n"
+                "• <code>.ip6 ::ffff:192.168.1.1</code> (IPv4-Mapped)\n"
+                "• <code>.ip6 2002:c000:0280::</code> (6to4 Tunnel)\n"
+                "• <code>.ip6 2001:0000:4136:e378:8000:63bf:3fff:fdd2</code> (Teredo)\n"
+                "• <code>.ip6 64:ff9b::192.0.2.33</code> (NAT64)\n"
+                "• <code>.ip6 2001:4860:4860::8888</code> (DNS / Host Lookup)",
+            )
+            return
+
+        query = args.strip().strip("[]")
+        await utils.answer(message, "<b>🔄 Конвертация и анализ IPv6...</b>")
+
+        ipv4_res, conv_type, extra_info = self._convert_ipv6_to_ipv4(query)
+
+        if ipv4_res:
+            extra_fmt = (
+                f"\nℹ️ <b>Детали:</b> <code>{html.escape(extra_info)}</code>"
+                if extra_info
+                else ""
+            )
+            res_msg = (
+                f"<b>🌐 Конвертация IPv6 ➔ IPv4</b>\n\n"
+                f"🔹 <b>Исходный IPv6:</b> <code>{html.escape(query)}</code>\n"
+                f"🔸 <b>Результат IPv4:</b> <code>{html.escape(ipv4_res)}</code>\n"
+                f"📌 <b>Тип конвертации:</b> <code>{html.escape(conv_type)}</code>"
+                f"{extra_fmt}"
+            )
+            await utils.answer(message, res_msg)
+            return
+
+        if conv_type == "invalid":
+            await utils.answer(
+                message,
+                f"<b>❌ Некорректный IPv6-адрес:</b> <code>{html.escape(query)}</code>\n\n"
+                f"<i>Пожалуйста, укажите верный IPv6-адрес (например, <code>::ffff:192.168.1.1</code>).</i>",
+            )
+            return
+
+        # Native IPv6: Выполняем сетевой lookup (Reverse DNS + GeoIP/ISP)
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        timeout = aiohttp.ClientTimeout(total=8)
+
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+            res_lookup = await self._lookup_native_ipv6(session, query)
+            await utils.answer(message, res_lookup)
+
+    def _convert_ipv6_to_ipv4(self, raw_ip6: str):
+        """Конвертирует IPv6 в IPv4 при помощи встроенных протоколов (IPv4-Mapped, 6to4, Teredo, NAT64)"""
+        raw = raw_ip6.strip("[] \t\r\n")
+        if "://" in raw:
+            parsed = urlparse(raw)
+            raw = parsed.hostname or raw
+        if "/" in raw:
+            raw = raw.split("/")[0]
+        if ":" in raw and "%" in raw:
+            raw = raw.split("%")[0]
+
+        try:
+            ip6 = ipaddress.IPv6Address(raw)
+        except Exception:
+            return None, "invalid", None
+
+        # 1. IPv4-Mapped IPv6 (::ffff:192.0.2.128)
+        ipv4_mapped = getattr(ip6, "ipv4_mapped", None)
+        if ipv4_mapped:
+            return str(ipv4_mapped), "IPv4-Mapped IPv6 (RFC 4291)", None
+
+        bytes_ip6 = ip6.packed
+
+        if bytes_ip6.startswith(b"\x00" * 10 + b"\xff\xff"):
+            ipv4_bytes = bytes_ip6[12:16]
+            return str(ipaddress.IPv4Address(ipv4_bytes)), "IPv4-Mapped IPv6 (RFC 4291)", None
+
+        # 2. 6to4 IPv6 (2002::/16)
+        sixtofour = getattr(ip6, "sixtofour", None)
+        if sixtofour:
+            return str(sixtofour), "6to4 Tunneling (RFC 3056)", None
+        if bytes_ip6.startswith(b"\x20\x02"):
+            ipv4_bytes = bytes_ip6[2:6]
+            return str(ipaddress.IPv4Address(ipv4_bytes)), "6to4 Tunneling (RFC 3056)", None
+
+        # 3. Teredo IPv6 (2001:0::/32)
+        teredo = getattr(ip6, "teredo", None)
+        if teredo:
+            server_ip, flags, port, client_ip = teredo
+            extra = f"Server: {server_ip}, Port: {port}"
+            return str(client_ip), "Teredo Tunneling (RFC 4380)", extra
+
+        # 4. NAT64 Well-Known Prefix (64:ff9b::/96)
+        if bytes_ip6.startswith(b"\x00d\xff\x9b\x00\x00\x00\x00\x00\x00\x00\x00"):
+            ipv4_bytes = bytes_ip6[12:16]
+            ipv4_addr = str(ipaddress.IPv4Address(ipv4_bytes))
+            return ipv4_addr, "NAT64 Well-Known Prefix (RFC 6052)", None
+
+        # 5. IPv4-compatible (::192.0.2.128) - 96 zero bits followed by IPv4
+        if bytes_ip6.startswith(b"\x00" * 12) and not ip6.is_unspecified:
+            ipv4_bytes = bytes_ip6[12:16]
+            return str(ipaddress.IPv4Address(ipv4_bytes)), "IPv4-Compatible IPv6 (RFC 4291)", None
+
+        # 6. Embedded IPv4 in last 4 bytes
+        last_4_bytes = bytes_ip6[-4:]
+        potential_ipv4 = ipaddress.IPv4Address(last_4_bytes)
+        if (
+            not potential_ipv4.is_private
+            and not potential_ipv4.is_loopback
+            and not potential_ipv4.is_unspecified
+            and not potential_ipv4.is_multicast
+        ):
+            return str(potential_ipv4), "Embedded IPv4 Address", None
+
+        return None, "native", None
+
+    async def _lookup_native_ipv6(self, session: aiohttp.ClientSession, ip6_str: str) -> str:
+        """Сетевой поиск для нативных IPv6 (Reverse PTR DNS + IPv4 Resolution + GeoIP)"""
+        ptr_host = None
+        resolved_ipv4 = None
+
+        loop = asyncio.get_event_loop()
+        try:
+            name_info = await loop.getnameinfo((ip6_str, 0), 0)
+            if name_info and name_info[0] and name_info[0] != ip6_str:
+                ptr_host = name_info[0]
+        except Exception:
+            pass
+
+        if ptr_host:
+            try:
+                resolved_ipv4 = await loop.run_in_executor(None, socket.gethostbyname, ptr_host)
+            except Exception:
+                pass
+
+        isp_info = ""
+        country_name = ""
+
+        try:
+            async with session.get(
+                f"http://ip-api.com/json/{quote(ip6_str)}?fields=status,message,country,countryCode,isp,org,as,query,reverse"
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("status") == "success":
+                        if not ptr_host and data.get("reverse"):
+                            ptr_host = data.get("reverse")
+                            try:
+                                resolved_ipv4 = await loop.run_in_executor(
+                                    None, socket.gethostbyname, ptr_host
+                                )
+                            except Exception:
+                                pass
+
+                        isp_info = html.escape(
+                            data.get("isp") or data.get("org") or data.get("as") or ""
+                        )
+                        c_code = data.get("countryCode", "")
+                        c_name = html.escape(data.get("country", ""))
+                        if c_code:
+                            country_flag = get_flag_emoji(c_code)
+                            country_name = f"{country_flag} {c_name} ({c_code})"
+        except Exception:
+            pass
+
+        ipv4_fmt = (
+            f"<code>{html.escape(resolved_ipv4)}</code>"
+            if resolved_ipv4
+            else "<i>Не найден прямой IPv4 для узла</i>"
+        )
+        ptr_fmt = (
+            f"<code>{html.escape(ptr_host)}</code>"
+            if ptr_host
+            else "<i>Отсутствует (No Reverse PTR)</i>"
+        )
+        isp_fmt = f"\n🏢 <b>Провайдер / ISP:</b> <code>{isp_info}</code>" if isp_info else ""
+        geo_fmt = f"\n🌍 <b>Страна:</b> {country_name}" if country_name else ""
+
+        return (
+            f"<b>🌐 Сетевой поиск IPv6 ➔ IPv4</b>\n\n"
+            f"🔹 <b>Исходный IPv6:</b> <code>{html.escape(ip6_str)}</code>\n"
+            f"🔸 <b>Связанный IPv4:</b> {ipv4_fmt}\n"
+            f"🏷 <b>Reverse PTR Домен:</b> {ptr_fmt}"
+            f"{isp_fmt}"
+            f"{geo_fmt}\n"
+            f"📌 <b>Метод:</b> <code>Reverse DNS / Domain Lookup</code>"
         )
