@@ -32,32 +32,36 @@ class KissMod(loader.Module):
             target_entity = await reply.get_sender()
         elif args:
             first_arg = args.split()[0]
-            if first_arg.startswith("@") or first_arg.lstrip("-").isdigit():
+            if (
+                first_arg.startswith("@")
+                or first_arg.lstrip("-").isdigit()
+                or first_arg.startswith("t.me/")
+                or first_arg.startswith("https://t.me/")
+            ):
                 try:
-                    client = getattr(self, "_client", None) or getattr(self, "client", None)
-                    target_entity = await client.get_entity(first_arg)
+                    target_entity = await message.client.get_entity(first_arg)
                     extra_text = args[len(first_arg):].strip()
                 except Exception:
-                    pass
+                    target_entity = None
 
         if not target_entity and message.is_private:
             try:
-                chat = await message.get_chat()
-                if getattr(chat, "id", None) != self._me.id:
-                    target_entity = chat
+                target_entity = await message.get_chat()
             except Exception:
                 pass
 
         return target_entity, extra_text
 
     async def _send_action(self, message: Message, emoji: str, action_verb: str, post_target: str = ""):
+        me = await message.client.get_me()
         target_entity, extra_text = await self._get_target_and_extra(message)
+
         if not target_entity:
             await utils.answer(message, self.strings("no_target"))
             return
 
-        self_name = utils.escape_html(get_display_name(self._me))
-        self_link = f'<a href="tg://user?id={self._me.id}">{self_name}</a>'
+        self_name = utils.escape_html(get_display_name(me))
+        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
 
         target_name = utils.escape_html(get_display_name(target_entity))
         target_id = getattr(target_entity, "id", 0)
@@ -158,3 +162,4 @@ class KissMod(loader.Module):
     async def pokecmd(self, message: Message):
         """[@username / reply / extra] — Poke"""
         await self._send_action(message, "👉", "потыкал(а) пальцем в")
+
