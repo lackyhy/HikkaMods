@@ -191,12 +191,33 @@ class DeletedLoggerMod(loader.Module):
 
     async def _get_chat_link(self, msg):
         if msg.is_private:
-            chat_id = getattr(msg, "chat_id", None)
-            if not chat_id and hasattr(msg, "peer_id") and hasattr(msg.peer_id, "user_id"):
-                chat_id = msg.peer_id.user_id
-            clean_id = str(chat_id).lstrip("-") if chat_id else ""
-            if clean_id:
+            user_id = getattr(msg, "chat_id", None)
+            username = None
+
+            try:
+                chat = await msg.get_chat()
+                if chat:
+                    user_id = getattr(chat, "id", user_id)
+                    username = getattr(chat, "username", None)
+            except Exception:
+                pass
+
+            if not user_id:
+                try:
+                    sender = await msg.get_sender()
+                    if sender:
+                        user_id = getattr(sender, "id", None)
+                        username = username or getattr(sender, "username", None)
+                except Exception:
+                    pass
+
+            if username:
+                return f'<a href="https://t.me/{username}">ЛС</a>'
+
+            if user_id:
+                clean_id = str(abs(user_id))
                 return f'<a href="tg://user?id={clean_id}">ЛС</a>'
+
             return "ЛС"
 
         try:
