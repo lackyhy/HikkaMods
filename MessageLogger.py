@@ -195,27 +195,21 @@ class DeletedLoggerMod(loader.Module):
     async def _get_chat_link(self, msg):
         if msg.is_private:
             user_id = getattr(msg, "chat_id", None)
-            username = None
-
-            try:
-                chat = await msg.get_chat()
-                if chat:
-                    user_id = getattr(chat, "id", user_id)
-                    username = getattr(chat, "username", None)
-            except Exception:
-                pass
+            if not user_id:
+                try:
+                    chat = await msg.get_chat()
+                    if chat:
+                        user_id = getattr(chat, "id", None)
+                except Exception:
+                    pass
 
             if not user_id:
                 try:
                     sender = await msg.get_sender()
                     if sender:
                         user_id = getattr(sender, "id", None)
-                        username = username or getattr(sender, "username", None)
                 except Exception:
                     pass
-
-            if username:
-                return f'<a href="https://t.me/{username}">ЛС</a>'
 
             if user_id:
                 clean_id = str(abs(user_id))
@@ -228,7 +222,7 @@ class DeletedLoggerMod(loader.Module):
             title = utils.escape_html(getattr(chat, "title", str(msg.chat_id)))
             username = getattr(chat, "username", None)
             if username:
-                return f'<a href="https://t.me/{username}">{title}</a>'
+                return f'<a href="tg://resolve?domain={username}">{title}</a>'
 
             clean_id = str(msg.chat_id).replace("-100", "").replace("-", "")
             return f'<a href="https://t.me/c/{clean_id}/{msg.id}">{title}</a>'
