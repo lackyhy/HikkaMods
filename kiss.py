@@ -100,6 +100,14 @@ class KissMod(loader.Module):
         await self._send_action(message, "💋", "поцеловал(а) в щёчку")
 
     @loader.command(
+        ru_doc="[@username / reply / extra] — Поцеловать в засос",
+        en_doc="[@username / reply / extra] — Passionately kiss",
+    )
+    async def kissscmd(self, message: Message):
+        """[@username / reply / extra] — Passionately kiss"""
+        await self._send_action(message, "💋", "поцеловал(а) в засос")
+
+    @loader.command(
         ru_doc="[@username / reply / extra] — Облизать",
         en_doc="[@username / reply / extra] — Lick",
     )
