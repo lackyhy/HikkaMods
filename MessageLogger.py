@@ -172,6 +172,28 @@ class DeletedLoggerMod(loader.Module):
                 old_key = self._order.popleft()
                 self._cache.pop(old_key, None)
 
+    async def _get_chat_link(self, msg):
+        if msg.is_private:
+            chat_id = getattr(msg, "chat_id", None)
+            if not chat_id and hasattr(msg, "peer_id") and hasattr(msg.peer_id, "user_id"):
+                chat_id = msg.peer_id.user_id
+            clean_id = str(chat_id).lstrip("-") if chat_id else ""
+            if clean_id:
+                return f'<a href="tg://user?id={clean_id}">ЛС</a>'
+            return "ЛС"
+
+        try:
+            chat = await msg.get_chat()
+            title = utils.escape_html(getattr(chat, "title", str(msg.chat_id)))
+            username = getattr(chat, "username", None)
+            if username:
+                return f'<a href="https://t.me/{username}">{title}</a>'
+
+            clean_id = str(msg.chat_id).replace("-100", "").replace("-", "")
+            return f'<a href="https://t.me/c/{clean_id}/{msg.id}">{title}</a>'
+        except Exception:
+            return utils.escape_html(str(msg.chat_id))
+
     async def _on_edit_event(self, event):
         """Обрабатывает редактирование сообщений Telegram API"""
         msg = getattr(event, "message", event)
@@ -219,23 +241,12 @@ class DeletedLoggerMod(loader.Module):
             sender_name = "Неизвестный"
             sender_id = "Unknown"
 
-        chat_str = "ЛС"
-        if not msg.is_private:
-            try:
-                chat = await msg.get_chat()
-                title = utils.escape_html(getattr(chat, "title", str(msg.chat_id)))
-                username = getattr(chat, "username", None)
-                if username:
-                    chat_str = f'<a href="https://t.me/{username}">{title}</a>'
-                else:
-                    clean_id = str(msg.chat_id).replace("-100", "").replace("-", "")
-                    chat_str = f'<a href="https://t.me/c/{clean_id}/{msg.id}">{title}</a>'
-            except Exception:
-                chat_str = str(msg.chat_id)
+        chat_link = await self._get_chat_link(msg)
+        sender_str = f'<a href="tg://user?id={sender_id}">{sender_name}</a> [<code>{sender_id}</code>]' if sender_id != "Unknown" else sender_name
 
         header = (
             f"✏️ <b>Отредактировано сообщение</b>\n"
-            f"👤 <b>От:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a> [<code>{sender_id}</code>] - ({chat_str})"
+            f"👤 <b>От:</b> {sender_str} - ({chat_link})"
         )
 
         formatted_log = (
@@ -301,18 +312,12 @@ class DeletedLoggerMod(loader.Module):
                 sender_name = "Неизвестный"
                 sender_id = "Unknown"
 
-            chat_title = "ЛС"
-            if not msg.is_private:
-                try:
-                    chat = await msg.get_chat()
-                    chat_title = utils.escape_html(getattr(chat, "title", str(msg.chat_id)))
-                except Exception:
-                    chat_title = str(msg.chat_id)
+            chat_link = await self._get_chat_link(msg)
+            sender_str = f'<a href="tg://user?id={sender_id}">{sender_name}</a> [<code>{sender_id}</code>]' if sender_id != "Unknown" else sender_name
 
             header = (
                 f"🗑 <b>Удалено сообщение</b>\n"
-                f"👤 <b>От:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a> [<code>{sender_id}</code>]\n"
-                f"💬 <b>Чат:</b> {chat_title} [<code>{msg.chat_id}</code>]"
+                f"👤 <b>От:</b> {sender_str} - ({chat_link})"
             )
 
             try:
