@@ -171,3 +171,108 @@ class KissMod(loader.Module):
         """[@username / reply / extra] — Poke"""
         await self._send_action(message, "👉", "потыкал(а) пальцем в")
 
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Отсосать",
+        en_doc="[@username / reply / extra] — Perform blowjob",
+    )
+    async def otscmd(self, message: Message):
+        """[@username / reply / extra] — Perform blowjob"""
+        await self._send_action(message, "😮‍💨", "отсосал(а) у")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Отлизать",
+        en_doc="[@username / reply / extra] — Perform cunnilingus",
+    )
+    async def otlcmd(self, message: Message):
+        """[@username / reply / extra] — Perform cunnilingus"""
+        await self._send_action(message, "👅", "отлизал(а) у")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Ударить",
+        en_doc="[@username / reply / extra] — Hit",
+    )
+    async def hitcmd(self, message: Message):
+        """[@username / reply / extra] — Hit"""
+        await self._send_action(message, "👊", "ударил(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Изнасиловать",
+        en_doc="[@username / reply / extra] — Rape",
+    )
+    async def rapecmd(self, message: Message):
+        """[@username / reply / extra] — Rape"""
+        await self._send_action(message, "🔞", "изнасиловал(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Нежный кусь",
+        en_doc="[@username / reply / extra] — Gentle bite",
+    )
+    async def gbitecmd(self, message: Message):
+        """[@username / reply / extra] — Gentle bite"""
+        await self._send_action(message, "🦮", "сделал(а) нежный кусь")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Пнуть",
+        en_doc="[@username / reply / extra] — Kick",
+    )
+    async def kickcmd(self, message: Message):
+        """[@username / reply / extra] — Kick"""
+        await self._send_action(message, "🦶", "пнул(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Пощекотать",
+        en_doc="[@username / reply / extra] — Tickle",
+    )
+    async def ticklecmd(self, message: Message):
+        """[@username / reply / extra] — Tickle"""
+        await self._send_action(message, "🤏", "пощекотал(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Сесть на лицо",
+        en_doc="[@username / reply / extra] — Sit on face",
+    )
+    async def sitfacecmd(self, message: Message):
+        """[@username / reply / extra] — Sit on face"""
+        await self._send_action(message, "🍑", "сел(а) на лицо")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Шлёпнуть по попке",
+        en_doc="[@username / reply / extra] — Spank butt",
+    )
+    async def spankcmd(self, message: Message):
+        """[@username / reply / extra] — Spank butt"""
+        await self._send_action(message, "🍑", "шлёпнул(а) по попке")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Полапать за интимные места",
+        en_doc="[@username / reply / extra] — Grope",
+    )
+    async def gropecmd(self, message: Message):
+        """[@username / reply / extra] — Grope"""
+        await self._send_action(message, "👐", "полапал(а) за интимные места")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Подмигнуть",
+        en_doc="[@username / reply / extra] — Wink",
+    )
+    async def winkcmd(self, message: Message):
+        """[@username / reply / extra] — Wink"""
+        await self._send_action(message, "😉", "подмигнул(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Дать подзатыльник",
+        en_doc="[@username / reply / extra] — Slap head",
+    )
+    async def headslapcmd(self, message: Message):
+        """[@username / reply / extra] — Slap head"""
+        await self._send_action(message, "🫲", "дал(а) подзатыльник")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Трахнуть",
+        en_doc="[@username / reply / extra] — Fuck",
+    )
+    async def fuckcmd(self, message: Message):
+        """[@username / reply / extra] — Fuck"""
+        await self._send_action(message, "👉👌", "трахнул(а)")
+
+

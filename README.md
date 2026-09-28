@@ -36,6 +36,19 @@
 - `.handhold [@username / reply / текст]` — Взять за ручку.
 - `.feed [@username / reply / текст]` — Покормить вкусняшкой.
 - `.poke [@username / reply / текст]` — Потыкать пальцем.
+- `.ots [@username / reply / текст]` — Отсосать.
+- `.otl [@username / reply / текст]` — Отлизать.
+- `.hit [@username / reply / текст]` — Ударить.
+- `.rape [@username / reply / текст]` — Изнасиловать.
+- `.gbite [@username / reply / текст]` — Нежный кусь.
+- `.kick [@username / reply / текст]` — Пнуть.
+- `.tickle [@username / reply / текст]` — Пощекотать.
+- `.sitface [@username / reply / текст]` — Сесть на лицо.
+- `.spank [@username / reply / текст]` — Шлёпнуть за попку.
+- `.grope [@username / reply / текст]` — Полапать за интимные места.
+- `.wink [@username / reply / текст]` — Подмигнуть.
+- `.headslap [@username / reply / текст]` — Дать подзатыльник.
+- `.fuck [@username / reply / текст]` — Трахнуть.
 
 ---
 
