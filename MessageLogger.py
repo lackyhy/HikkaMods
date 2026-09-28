@@ -104,19 +104,22 @@ class DeletedLoggerMod(loader.Module):
         self.db = db
 
         try:
-            for handler, builder in list(client.list_event_handlers()):
-                if getattr(handler, "__name__", "") in ["_on_delete_event", "_on_edit_event"]:
-                    client.remove_event_handler(handler, builder)
+            if hasattr(client, "list_event_handlers"):
+                handlers = client.list_event_handlers()
+                for handler, builder in list(handlers):
+                    if getattr(handler, "__name__", "") in ["_on_delete_event", "_on_edit_event"]:
+                        client.remove_event_handler(handler, builder)
         except Exception:
             pass
 
         client.add_event_handler(self._on_delete_event, events.MessageDeleted())
         client.add_event_handler(self._on_edit_event, events.MessageEdited())
 
-    def on_unload(self):
+    async def on_unload(self):
         try:
-            if hasattr(self, "client"):
-                for handler, builder in list(self.client.list_event_handlers()):
+            if hasattr(self, "client") and self.client and hasattr(self.client, "list_event_handlers"):
+                handlers = self.client.list_event_handlers()
+                for handler, builder in list(handlers):
                     if getattr(handler, "__name__", "") in ["_on_delete_event", "_on_edit_event"]:
                         self.client.remove_event_handler(handler, builder)
         except Exception:
