@@ -302,9 +302,10 @@ class DeletedLoggerMod(loader.Module):
                     target,
                     msg.media,
                     caption=formatted_log[:1024],
+                    link_preview=False,
                 )
             else:
-                await self.client.send_message(target, formatted_log)
+                await self.client.send_message(target, formatted_log, link_preview=False)
         except Exception as e:
             logger.error(f"Ошибка при логировании редактирования сообщения: {e}")
 
@@ -373,10 +374,11 @@ class DeletedLoggerMod(loader.Module):
                         target,
                         msg.media,
                         caption=caption[:1024],
+                        link_preview=False,
                     )
                 elif msg.raw_text:
                     text = f"{header}\n💬 <b>Текст:</b>\n{utils.escape_html(msg.raw_text)}"
-                    await self.client.send_message(target, text)
+                    await self.client.send_message(target, text, link_preview=False)
             except Exception as e:
                 logger.error(f"Ошибка при пересылке удаленного сообщения: {e}")
 
