@@ -49,6 +49,7 @@
 - `.wink [@username / reply / текст]` — Подмигнуть.
 - `.headslap [@username / reply / текст]` — Дать подзатыльник.
 - `.fuck [@username / reply / текст]` — Трахнуть.
+- `.feel [@username / reply / текст]` — Помацать.
 
 ---
 

@@ -275,4 +275,12 @@ class KissMod(loader.Module):
         """[@username / reply / extra] — Fuck"""
         await self._send_action(message, "👉👌", "трахнул(а)")
 
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Помацать",
+        en_doc="[@username / reply / extra] — Feel/Fondle",
+    )
+    async def feelcmd(self, message: Message):
+        """[@username / reply / extra] — Feel/Fondle"""
+        await self._send_action(message, "🤲", "помацал(а)")
+
 
