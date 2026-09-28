@@ -105,7 +105,7 @@ class DeletedLoggerMod(loader.Module):
 
         try:
             for handler, builder in list(client.list_event_handlers()):
-                if getattr(handler, "__qualname__", "").startswith("DeletedLoggerMod."):
+                if getattr(handler, "__name__", "") in ["_on_delete_event", "_on_edit_event"]:
                     client.remove_event_handler(handler, builder)
         except Exception:
             pass
@@ -117,7 +117,7 @@ class DeletedLoggerMod(loader.Module):
         try:
             if hasattr(self, "client"):
                 for handler, builder in list(self.client.list_event_handlers()):
-                    if getattr(handler, "__qualname__", "").startswith("DeletedLoggerMod."):
+                    if getattr(handler, "__name__", "") in ["_on_delete_event", "_on_edit_event"]:
                         self.client.remove_event_handler(handler, builder)
         except Exception:
             pass
