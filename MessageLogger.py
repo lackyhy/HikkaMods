@@ -102,8 +102,25 @@ class DeletedLoggerMod(loader.Module):
     async def client_ready(self, client, db):
         self.client = client
         self.db = db
+
+        try:
+            for handler, builder in list(client.list_event_handlers()):
+                if getattr(handler, "__qualname__", "").startswith("DeletedLoggerMod."):
+                    client.remove_event_handler(handler, builder)
+        except Exception:
+            pass
+
         client.add_event_handler(self._on_delete_event, events.MessageDeleted())
         client.add_event_handler(self._on_edit_event, events.MessageEdited())
+
+    def on_unload(self):
+        try:
+            if hasattr(self, "client"):
+                for handler, builder in list(self.client.list_event_handlers()):
+                    if getattr(handler, "__qualname__", "").startswith("DeletedLoggerMod."):
+                        self.client.remove_event_handler(handler, builder)
+        except Exception:
+            pass
 
     def _get_ignored_chats(self):
         raw = self.config["ignored_chats"]
