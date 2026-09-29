@@ -389,14 +389,16 @@ class DeletedLoggerMod(loader.Module):
                 f"👤 <b>От:</b> {sender_str} - ({chat_link})"
             )
 
+            msk_tz = datetime.timezone(datetime.timedelta(hours=3))
+
             sent_time_str = "Неизвестно"
             if hasattr(msg, "date") and msg.date:
                 try:
-                    sent_time_str = msg.date.astimezone().strftime("%d.%m.%Y %H:%M:%S")
+                    sent_time_str = msg.date.astimezone(msk_tz).strftime("%d.%m.%Y %H:%M:%S")
                 except Exception:
                     sent_time_str = msg.date.strftime("%d.%m.%Y %H:%M:%S")
 
-            deleted_time_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+            deleted_time_str = datetime.datetime.now(msk_tz).strftime("%d.%m.%Y %H:%M:%S")
 
             time_footer = (
                 f"\n\n<b>Отправлено:</b> {sent_time_str}\n"
