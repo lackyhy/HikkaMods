@@ -1,6 +1,4 @@
 # meta developer: @lackyhyyy666
-# scope: hikka_only
-# scope: hikka_min 1.6.2
 
 import html
 import logging
@@ -21,6 +19,28 @@ class KissMod(loader.Module):
         "no_target": "<b>⚠️ Укажите пользователя (@username/ID) или ответьте на его сообщение!</b>",
         "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
     }
+
+    def __init__(self):
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "gender",
+                "default",
+                lambda: "Пол пользователя для RP-команд ('default' / 'male' / 'female')",
+                validator=loader.validators.Choice(["default", "male", "female", "m", "f", "мужской", "женский"]),
+            ),
+        )
+
+    def _format_verb(self, verb: str) -> str:
+        gender = str(self.config["gender"]).lower().strip()
+        if gender not in ["male", "female", "m", "f", "мужской", "женский"]:
+            return verb
+
+        if gender in ["male", "m", "мужской"]:
+            return verb.replace("(ась)", "").replace("(а)", "").replace("(a)", "")
+        else:
+            res = verb.replace("ся(ась)", "ась").replace("(ась)", "ась")
+            res = res.replace("(а)", "а").replace("(a)", "а")
+            return res
 
     async def _get_target_and_extra(self, message: Message):
         args = utils.get_args_raw(message).strip()
@@ -120,8 +140,9 @@ class KissMod(loader.Module):
         target_id = getattr(target_entity, "id", 0)
         target_link = f'<a href="tg://user?id={target_id}">{target_name}</a>'
 
+        formatted_verb = self._format_verb(action_verb)
         post_str = f" {post_target}" if post_target else ""
-        out = f"{emoji} <b>{self_link} {action_verb} {target_link}{post_str}!</b>"
+        out = f"{emoji} <b>{self_link} {formatted_verb} {target_link}{post_str}!</b>"
 
         if extra_text:
             out += f"\n<i>«{html.escape(extra_text)}»</i>"
@@ -152,13 +173,41 @@ class KissMod(loader.Module):
         t2_name = utils.escape_html(get_display_name(t2))
         t2_link = f'<a href="tg://user?id={getattr(t2, "id", 0)}">{t2_name}</a>'
 
+        formatted_verb = self._format_verb(verb_between)
         post = f" {post_str}" if post_str else ""
-        out = f"{emoji} <b>{self_link} {verb_between} {t1_link} {prep_target2} {t2_link}{post}!</b>"
+        out = f"{emoji} <b>{self_link} {formatted_verb} {t1_link} {prep_target2} {t2_link}{post}!</b>"
 
         if extra_text:
             out += f"\n<i>«{html.escape(extra_text)}»</i>"
 
         await utils.answer(message, out)
+
+    @loader.command(
+        ru_doc="[default / male / female] — Установить пол для RP-сообщений",
+        en_doc="[default / male / female] — Set gender for RP messages",
+    )
+    async def setgender(self, message: Message):
+        """[default / male / female] — Set gender for RP messages"""
+        args = utils.get_args_raw(message).lower().strip()
+        if not args:
+            await utils.answer(
+                message,
+                f"⚙️ <b>Текущий пол в Kiss:</b> <code>{self.config['gender']}</code>\n"
+                f"<i>Изменить:</i> <code>.setgender [default / male / female]</code>",
+            )
+            return
+
+        if args in ["male", "m", "мужской", "муж"]:
+            self.config["gender"] = "male"
+            await utils.answer(message, "✅ <b>Установлен мужской пол (погладил, обнял...)</b>")
+        elif args in ["female", "f", "женский", "жен"]:
+            self.config["gender"] = "female"
+            await utils.answer(message, "✅ <b>Установлен женский пол (погладила, обняла...)</b>")
+        elif args in ["default", "none", "off", "нейтральный", "оба"]:
+            self.config["gender"] = "default"
+            await utils.answer(message, "✅ <b>Установлен режим по умолчанию (погладил(а)...)</b>")
+        else:
+            await utils.answer(message, "❌ <b>Допустимые варианты:</b> <code>default</code>, <code>male</code>, <code>female</code>")
 
     @loader.command(
         ru_doc="[@user1] [@user2 / reply] [extra] — Посмеяться вместе с @target1 над @target2",
