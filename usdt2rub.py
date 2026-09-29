@@ -45,13 +45,35 @@ def safe_eval(expr):
     return _eval(parsed.body)
 
 async def get_coingecko_rate():
-    """Получение курса USDT/RUB с CoinGecko API с фолбэком на Binance API"""
+    """Получение курса USDT/RUB с надежных API источников с фолбэками"""
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     timeout = aiohttp.ClientTimeout(total=5)
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
-        # 1. Запрос к CoinGecko
+        # 1. Запрос к Open Exchange Rates API
+        try:
+            async with session.get("https://open.er-api.com/v6/latest/USD") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    rate = data.get("rates", {}).get("RUB")
+                    if rate:
+                        return float(rate)
+        except Exception:
+            pass
+
+        # 2. Запрос к ЦБ РФ API
+        try:
+            async with session.get("https://www.cbr-xml-daily.ru/daily_json.js") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    rate = data.get("Valute", {}).get("USD", {}).get("Value")
+                    if rate:
+                        return float(rate)
+        except Exception:
+            pass
+
+        # 3. Запрос к CoinGecko API
         try:
             async with session.get("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub") as resp:
                 if resp.status == 200:
@@ -59,17 +81,6 @@ async def get_coingecko_rate():
                     rate = data.get("tether", {}).get("rub")
                     if rate:
                         return float(rate)
-        except Exception:
-            pass
-
-        # 2. Фолбэк к Binance API
-        try:
-            async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=USDTRUB") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    price = data.get("price")
-                    if price:
-                        return float(price)
         except Exception:
             pass
 
