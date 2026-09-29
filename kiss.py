@@ -24,23 +24,21 @@ class KissMod(loader.Module):
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "gender",
-                "default",
-                lambda: "Пол пользователя для RP-команд ('default' / 'male' / 'female')",
-                validator=loader.validators.Choice(["default", "male", "female", "m", "f", "мужской", "женский"]),
+                "по умолчанию",
+                lambda: "Пол пользователя для RP-команд",
+                validator=loader.validators.Choice(["по умолчанию", "мужской", "женский"]),
             ),
         )
 
     def _format_verb(self, verb: str) -> str:
         gender = str(self.config["gender"]).lower().strip()
-        if gender not in ["male", "female", "m", "f", "мужской", "женский"]:
-            return verb
-
-        if gender in ["male", "m", "мужской"]:
+        if gender in ["мужской", "male", "m"]:
             return verb.replace("(ась)", "").replace("(а)", "").replace("(a)", "")
-        else:
+        elif gender in ["женский", "female", "f"]:
             res = verb.replace("ся(ась)", "ась").replace("(ась)", "ась")
             res = res.replace("(а)", "а").replace("(a)", "а")
             return res
+        return verb
 
     async def _get_target_and_extra(self, message: Message):
         args = utils.get_args_raw(message).strip()
@@ -183,33 +181,6 @@ class KissMod(loader.Module):
         await utils.answer(message, out)
 
     @loader.command(
-        ru_doc="[default / male / female] — Установить пол для RP-сообщений",
-        en_doc="[default / male / female] — Set gender for RP messages",
-    )
-    async def setgender(self, message: Message):
-        """[default / male / female] — Set gender for RP messages"""
-        args = utils.get_args_raw(message).lower().strip()
-        if not args:
-            await utils.answer(
-                message,
-                f"⚙️ <b>Текущий пол в Kiss:</b> <code>{self.config['gender']}</code>\n"
-                f"<i>Изменить:</i> <code>.setgender [default / male / female]</code>",
-            )
-            return
-
-        if args in ["male", "m", "мужской", "муж"]:
-            self.config["gender"] = "male"
-            await utils.answer(message, "✅ <b>Установлен мужской пол (погладил, обнял...)</b>")
-        elif args in ["female", "f", "женский", "жен"]:
-            self.config["gender"] = "female"
-            await utils.answer(message, "✅ <b>Установлен женский пол (погладила, обняла...)</b>")
-        elif args in ["default", "none", "off", "нейтральный", "оба"]:
-            self.config["gender"] = "default"
-            await utils.answer(message, "✅ <b>Установлен режим по умолчанию (погладил(а)...)</b>")
-        else:
-            await utils.answer(message, "❌ <b>Допустимые варианты:</b> <code>default</code>, <code>male</code>, <code>female</code>")
-
-    @loader.command(
         ru_doc="[@user1] [@user2 / reply] [extra] — Посмеяться вместе с @target1 над @target2",
         en_doc="[@user1] [@user2 / reply] [extra] — Laugh together with @target1 at @target2",
     )
@@ -233,28 +204,6 @@ class KissMod(loader.Module):
         """[@user1] [@user2 / reply] [extra] — Gossip with @target1 about @target2"""
         await self._send_two_target_action(message, "🗣", "посплетничал(а) вместе с", "о")
 
-    async def _send_action(self, message: Message, emoji: str, action_verb: str, post_target: str = ""):
-        me = await message.client.get_me()
-        target_entity, extra_text = await self._get_target_and_extra(message)
-
-        if not target_entity:
-            await utils.answer(message, self.strings("no_target"))
-            return
-
-        self_name = utils.escape_html(get_display_name(me))
-        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
-
-        target_name = utils.escape_html(get_display_name(target_entity))
-        target_id = getattr(target_entity, "id", 0)
-        target_link = f'<a href="tg://user?id={target_id}">{target_name}</a>'
-
-        post_str = f" {post_target}" if post_target else ""
-        out = f"{emoji} <b>{self_link} {action_verb} {target_link}{post_str}!</b>"
-
-        if extra_text:
-            out += f"\n<i>«{html.escape(extra_text)}»</i>"
-
-        await utils.answer(message, out)
 
     @loader.command(
         ru_doc="[@username / reply / extra] — Погладить по голове",
