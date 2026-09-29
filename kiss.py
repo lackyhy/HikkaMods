@@ -19,6 +19,7 @@ class KissMod(loader.Module):
     strings = {
         "name": "Kiss",
         "no_target": "<b>⚠️ Укажите пользователя (@username/ID) или ответьте на его сообщение!</b>",
+        "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
     }
 
     async def _get_target_and_extra(self, message: Message):
@@ -51,6 +52,137 @@ class KissMod(loader.Module):
                 pass
 
         return target_entity, extra_text
+
+    async def _get_two_targets_and_extra(self, message: Message):
+        args = utils.get_args_raw(message).strip()
+        reply = await message.get_reply_message()
+        reply_sender = await reply.get_sender() if reply else None
+
+        words = args.split()
+        target1 = None
+        target2 = None
+        used = 0
+
+        if len(words) >= 1:
+            w1 = words[0]
+            if (
+                w1.startswith("@")
+                or w1.lstrip("-").isdigit()
+                or w1.startswith("t.me/")
+                or w1.startswith("https://t.me/")
+            ):
+                try:
+                    target1 = await message.client.get_entity(w1)
+                    used += 1
+                except Exception:
+                    target1 = None
+
+        if len(words) >= used + 1:
+            w2 = words[used]
+            if (
+                w2.startswith("@")
+                or w2.lstrip("-").isdigit()
+                or w2.startswith("t.me/")
+                or w2.startswith("https://t.me/")
+            ):
+                try:
+                    target2 = await message.client.get_entity(w2)
+                    used += 1
+                except Exception:
+                    target2 = None
+
+        if not target1 and reply_sender:
+            target1 = reply_sender
+        elif not target1 and message.is_private:
+            try:
+                target1 = await message.get_chat()
+            except Exception:
+                pass
+
+        if not target2 and reply_sender and getattr(target1, "id", None) != getattr(reply_sender, "id", None):
+            target2 = reply_sender
+
+        extra_text = " ".join(words[used:]).strip()
+        return target1, target2, extra_text
+
+    async def _send_action(self, message: Message, emoji: str, action_verb: str, post_target: str = ""):
+        me = await message.client.get_me()
+        target_entity, extra_text = await self._get_target_and_extra(message)
+
+        if not target_entity:
+            await utils.answer(message, self.strings("no_target"))
+            return
+
+        self_name = utils.escape_html(get_display_name(me))
+        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+
+        target_name = utils.escape_html(get_display_name(target_entity))
+        target_id = getattr(target_entity, "id", 0)
+        target_link = f'<a href="tg://user?id={target_id}">{target_name}</a>'
+
+        post_str = f" {post_target}" if post_target else ""
+        out = f"{emoji} <b>{self_link} {action_verb} {target_link}{post_str}!</b>"
+
+        if extra_text:
+            out += f"\n<i>«{html.escape(extra_text)}»</i>"
+
+        await utils.answer(message, out)
+
+    async def _send_two_target_action(
+        self,
+        message: Message,
+        emoji: str,
+        verb_between: str,
+        prep_target2: str,
+        post_str: str = "",
+    ):
+        me = await message.client.get_me()
+        t1, t2, extra_text = await self._get_two_targets_and_extra(message)
+
+        if not t1 or not t2:
+            await utils.answer(message, self.strings("no_two_targets"))
+            return
+
+        self_name = utils.escape_html(get_display_name(me))
+        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+
+        t1_name = utils.escape_html(get_display_name(t1))
+        t1_link = f'<a href="tg://user?id={getattr(t1, "id", 0)}">{t1_name}</a>'
+
+        t2_name = utils.escape_html(get_display_name(t2))
+        t2_link = f'<a href="tg://user?id={getattr(t2, "id", 0)}">{t2_name}</a>'
+
+        post = f" {post_str}" if post_str else ""
+        out = f"{emoji} <b>{self_link} {verb_between} {t1_link} {prep_target2} {t2_link}{post}!</b>"
+
+        if extra_text:
+            out += f"\n<i>«{html.escape(extra_text)}»</i>"
+
+        await utils.answer(message, out)
+
+    @loader.command(
+        ru_doc="[@user1] [@user2 / reply] [extra] — Посмеяться вместе с @target1 над @target2",
+        en_doc="[@user1] [@user2 / reply] [extra] — Laugh together with @target1 at @target2",
+    )
+    async def laughcmd(self, message: Message):
+        """[@user1] [@user2 / reply] [extra] — Laugh together with @target1 at @target2"""
+        await self._send_two_target_action(message, "🤣", "посмеялся(ась) вместе с", "над")
+
+    @loader.command(
+        ru_doc="[@user1] [@user2 / reply] [extra] — Зашипперить @target1 с @target2",
+        en_doc="[@user1] [@user2 / reply] [extra] — Ship @target1 with @target2",
+    )
+    async def shipcmd(self, message: Message):
+        """[@user1] [@user2 / reply] [extra] — Ship @target1 with @target2"""
+        await self._send_two_target_action(message, "👩‍❤️‍👨", "зашипперил(а)", "с")
+
+    @loader.command(
+        ru_doc="[@user1] [@user2 / reply] [extra] — Посплетничать с @target1 о @target2",
+        en_doc="[@user1] [@user2 / reply] [extra] — Gossip with @target1 about @target2",
+    )
+    async def gossipcmd(self, message: Message):
+        """[@user1] [@user2 / reply] [extra] — Gossip with @target1 about @target2"""
+        await self._send_two_target_action(message, "🗣", "посплетничал(а) вместе с", "о")
 
     async def _send_action(self, message: Message, emoji: str, action_verb: str, post_target: str = ""):
         me = await message.client.get_me()
