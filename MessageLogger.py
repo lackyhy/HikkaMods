@@ -406,8 +406,21 @@ class DeletedLoggerMod(loader.Module):
             )
 
             try:
-                # Если сообщение содержало стикер, файл, войс, фото или видео
-                if msg.media:
+                is_sticker = False
+                sticker_emoji = ""
+                if hasattr(msg, "media") and msg.media and hasattr(msg.media, "document") and msg.media.document:
+                    for attr in getattr(msg.media.document, "attributes", []):
+                        if type(attr).__name__ == "DocumentAttributeSticker":
+                            is_sticker = True
+                            sticker_emoji = getattr(attr, "alt", "")
+                            break
+
+                if is_sticker:
+                    sticker_info = f" {sticker_emoji}" if sticker_emoji else ""
+                    text = f"{header}\n💬 <b>Стикер:</b>{sticker_info}{time_footer}"
+                    await self.client.send_message(target, text, link_preview=False)
+                    await self.client.send_file(target, msg.media, force_document=True)
+                elif msg.media:
                     caption = (
                         f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}{time_footer}"
                         if msg.raw_text
