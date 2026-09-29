@@ -53,6 +53,10 @@
 - `.laugh [@target1] [@target2 / reply] [текст]` — Посмеяться вместе с @target1 над @target2.
 - `.ship [@target1] [@target2 / reply] [текст]` — Зашипперить @target1 с @target2.
 - `.gossip [@target1] [@target2 / reply] [текст]` — Посплетничать с @target1 о @target2.
+- `.otsa [текст]` — Отсосать всем.
+- `.otla [текст]` — Отлизать всем.
+- `.fucka [текст]` — Трахнуть всех.
+- `.huga [текст]` — Обнять всех.
 
 ---
 

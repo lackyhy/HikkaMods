@@ -180,6 +180,21 @@ class KissMod(loader.Module):
 
         await utils.answer(message, out)
 
+    async def _send_all_action(self, message: Message, emoji: str, action_verb: str, target_all_phrase: str):
+        me = await message.client.get_me()
+        extra_text = utils.get_args_raw(message).strip()
+
+        self_name = utils.escape_html(get_display_name(me))
+        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+
+        formatted_verb = self._format_verb(action_verb)
+        out = f"{emoji} <b>{self_link} {formatted_verb} {target_all_phrase}!</b>"
+
+        if extra_text:
+            out += f"\n<i>«{html.escape(extra_text)}»</i>"
+
+        await utils.answer(message, out)
+
     @loader.command(
         ru_doc="[@user1] [@user2 / reply] [extra] — Посмеяться вместе с @target1 над @target2",
         en_doc="[@user1] [@user2 / reply] [extra] — Laugh together with @target1 at @target2",
@@ -412,5 +427,37 @@ class KissMod(loader.Module):
     async def feelcmd(self, message: Message):
         """[@username / reply / extra] — Feel/Fondle"""
         await self._send_action(message, "🤲", "помацал(а)")
+
+    @loader.command(
+        ru_doc="[extra] — Отсосать всем",
+        en_doc="[extra] — Perform blowjob on everyone",
+    )
+    async def otsacmd(self, message: Message):
+        """[extra] — Perform blowjob on everyone"""
+        await self._send_all_action(message, "😮‍💨", "отсосал(а)", "у всех")
+
+    @loader.command(
+        ru_doc="[extra] — Отлизать всем",
+        en_doc="[extra] — Perform cunnilingus on everyone",
+    )
+    async def otlacmd(self, message: Message):
+        """[extra] — Perform cunnilingus on everyone"""
+        await self._send_all_action(message, "👅", "отлизал(а)", "у всех")
+
+    @loader.command(
+        ru_doc="[extra] — Трахнуть всех",
+        en_doc="[extra] — Fuck everyone",
+    )
+    async def fuckacmd(self, message: Message):
+        """[extra] — Fuck everyone"""
+        await self._send_all_action(message, "👉👌", "трахнул(а)", "всех")
+
+    @loader.command(
+        ru_doc="[extra] — Обнять всех",
+        en_doc="[extra] — Hug everyone",
+    )
+    async def hugacmd(self, message: Message):
+        """[extra] — Hug everyone"""
+        await self._send_all_action(message, "🫂", "обнял(а)", "всех")
 
 
