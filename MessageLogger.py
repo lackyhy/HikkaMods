@@ -1,6 +1,7 @@
 # meta developer: @lackyhyyy666
 
 import datetime
+import io
 import logging
 from collections import deque
 from telethon import events
@@ -419,7 +420,25 @@ class DeletedLoggerMod(loader.Module):
                     sticker_info = f" {sticker_emoji}" if sticker_emoji else ""
                     text = f"{header}\n💬 <b>Стикер:</b>{sticker_info}{time_footer}"
                     await self.client.send_message(target, text, link_preview=False)
-                    await self.client.send_file(target, msg.media, force_document=True)
+                    try:
+                        sticker_bytes = await self.client.download_media(msg.media, bytes)
+                        if sticker_bytes:
+                            doc = getattr(msg.media, "document", None)
+                            mime = getattr(doc, "mime_type", "")
+                            if "tgsticker" in mime:
+                                fname = "sticker.tgs"
+                            elif "webm" in mime:
+                                fname = "sticker.webm"
+                            else:
+                                fname = "sticker.webp"
+
+                            f = io.BytesIO(sticker_bytes)
+                            f.name = fname
+                            await self.client.send_file(target, f, force_document=True)
+                        else:
+                            await self.client.send_file(target, msg.media, force_document=True)
+                    except Exception:
+                        await self.client.send_file(target, msg.media, force_document=True)
                 elif msg.media:
                     caption = (
                         f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}{time_footer}"
