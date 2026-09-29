@@ -4,7 +4,7 @@ import datetime
 import io
 import logging
 from collections import deque
-from telethon import events
+from telethon import events, functions
 from telethon.tl.types import Channel, Chat, User
 from telethon.utils import get_peer_id
 from .. import loader, utils
@@ -420,25 +420,13 @@ class DeletedLoggerMod(loader.Module):
                     sticker_info = f" {sticker_emoji}" if sticker_emoji else ""
                     text = f"{header}\n💬 <b>Стикер:</b>{sticker_info}{time_footer}"
                     await self.client.send_message(target, text, link_preview=False)
-                    try:
-                        sticker_bytes = await self.client.download_media(msg.media, bytes)
-                        if sticker_bytes:
-                            doc = getattr(msg.media, "document", None)
-                            mime = getattr(doc, "mime_type", "")
-                            if "tgsticker" in mime:
-                                fname = "sticker.tgs"
-                            elif "webm" in mime:
-                                fname = "sticker.webm"
-                            else:
-                                fname = "sticker.webp"
-
-                            f = io.BytesIO(sticker_bytes)
-                            f.name = fname
-                            await self.client.send_file(target, f, force_document=True)
-                        else:
-                            await self.client.send_file(target, msg.media, force_document=True)
-                    except Exception:
-                        await self.client.send_file(target, msg.media, force_document=True)
+                    await self.client.send_file(target, msg.media)
+                    doc = getattr(msg.media, "document", None)
+                    if doc:
+                        try:
+                            await self.client(functions.messages.SaveRecentStickerRequest(id=doc, unsave=True))
+                        except Exception:
+                            pass
                 elif msg.media:
                     caption = (
                         f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}{time_footer}"
