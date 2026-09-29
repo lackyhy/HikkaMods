@@ -1,5 +1,6 @@
 # meta developer: @lackyhyyy666
 
+import datetime
 import logging
 from collections import deque
 from telethon import events
@@ -23,11 +24,13 @@ class DeletedLoggerMod(loader.Module):
             "• <b>Лог-чат:</b> <code>{}</code>\n"
             "• <b>ЛС (PM):</b> {}\n"
             "• <b>Группы:</b> {}\n"
+            "• <b>Свои сообщения:</b> {}\n"
             "• <b>Игнорируемых чатов:</b> <code>{}</code>\n"
             "• <b>Сообщений в кэше:</b> <code>{}</code>"
         ),
         "toggle_pm": "👁 Логирование удалений в ЛС: {}",
         "toggle_group": "👥 Логирование удалений в группах: {}",
+        "toggle_self": "👤 Логирование собственных сообщений: {}",
         "ignored_add": "🚫 <b>Чат/Пользователь добавлен в игнорируемые:</b> <code>{}</code>",
         "ignored_remove": "✅ <b>Чат/Пользователь удален из игнорируемых:</b> <code>{}</code>",
         "ignored_list": "🚫 <b>Список игнорируемых чатов/пользователей:</b>\n{}",
@@ -42,11 +45,13 @@ class DeletedLoggerMod(loader.Module):
             "• <b>Лог-чат:</b> <code>{}</code>\n"
             "• <b>ЛС (PM):</b> {}\n"
             "• <b>Группы:</b> {}\n"
+            "• <b>Свои сообщения:</b> {}\n"
             "• <b>Игнорируемых чатов:</b> <code>{}</code>\n"
             "• <b>Сообщений в кэше:</b> <code>{}</code>"
         ),
         "toggle_pm": "👁 Логирование удалений в ЛС: {}",
         "toggle_group": "👥 Логирование удалений в группах: {}",
+        "toggle_self": "👤 Логирование собственных сообщений: {}",
         "ignored_add": "🚫 <b>Чат/Пользователь добавлен в игнорируемые:</b> <code>{}</code>",
         "ignored_remove": "✅ <b>Чат/Пользователь удален из игнорируемых:</b> <code>{}</code>",
         "ignored_list": "🚫 <b>Список игнорируемых чатов/пользователей:</b>\n{}",
@@ -73,6 +78,12 @@ class DeletedLoggerMod(loader.Module):
                 "log_groups",
                 True,
                 lambda: "Логировать ли удаления в группах",
+                validator=loader.validators.Boolean(),
+            ),
+            loader.ConfigValue(
+                "log_self",
+                True,
+                lambda: "Логировать ли свои собственные сообщения (удаление и редактирование)",
                 validator=loader.validators.Boolean(),
             ),
             loader.ConfigValue(
@@ -250,6 +261,17 @@ class DeletedLoggerMod(loader.Module):
         if not msg.is_private and not self.config["log_groups"]:
             return
 
+        # Фильтрация собственных сообщений
+        if not self.config["log_self"]:
+            if getattr(msg, "out", False):
+                return
+            try:
+                me = await self.client.get_me()
+                if getattr(msg, "sender_id", None) == me.id:
+                    return
+            except Exception:
+                pass
+
         key = (msg.chat_id, msg.id)
         old_msg = self._cache.get(key)
         self._cache[key] = msg  # Обновляем состояние в кэше
@@ -339,6 +361,17 @@ class DeletedLoggerMod(loader.Module):
             if not msg.is_private and not self.config["log_groups"]:
                 continue
 
+            # Фильтрация собственных сообщений
+            if not self.config["log_self"]:
+                if getattr(msg, "out", False):
+                    continue
+                try:
+                    me = await self.client.get_me()
+                    if getattr(msg, "sender_id", None) == me.id:
+                        continue
+                except Exception:
+                    pass
+
             # Получаем отправителя и чат
             try:
                 sender = await msg.get_sender()
@@ -356,13 +389,27 @@ class DeletedLoggerMod(loader.Module):
                 f"👤 <b>От:</b> {sender_str} - ({chat_link})"
             )
 
+            sent_time_str = "Неизвестно"
+            if hasattr(msg, "date") and msg.date:
+                try:
+                    sent_time_str = msg.date.astimezone().strftime("%d.%m.%Y %H:%M:%S")
+                except Exception:
+                    sent_time_str = msg.date.strftime("%d.%m.%Y %H:%M:%S")
+
+            deleted_time_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+
+            time_footer = (
+                f"\n\n<b>Отправлено:</b> {sent_time_str}\n"
+                f"<b>Удалено:</b> {deleted_time_str}"
+            )
+
             try:
                 # Если сообщение содержало стикер, файл, войс, фото или видео
                 if msg.media:
                     caption = (
-                        f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}"
+                        f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}{time_footer}"
                         if msg.raw_text
-                        else header
+                        else f"{header}{time_footer}"
                     )
                     await self.client.send_file(
                         target,
@@ -371,7 +418,7 @@ class DeletedLoggerMod(loader.Module):
                         link_preview=False,
                     )
                 elif msg.raw_text:
-                    text = f"{header}\n💬 <b>Текст:</b>\n{utils.escape_html(msg.raw_text)}"
+                    text = f"{header}\n💬 <b>Текст:</b>\n{utils.escape_html(msg.raw_text)}{time_footer}"
                     await self.client.send_message(target, text, link_preview=False)
             except Exception as e:
                 logger.error(f"Ошибка при пересылке удаленного сообщения: {e}")
@@ -515,6 +562,14 @@ class DeletedLoggerMod(loader.Module):
         state_str = "<b>ВКЛ</b> ✅" if new_state else "<b>ВЫКЛ</b> ❌"
         await utils.answer(message, self.strings("toggle_group").format(state_str))
 
+    @loader.command(ru_doc="Переключить логирование собственных сообщений")
+    async def togglelogself(self, message):
+        """Toggle logging self messages"""
+        new_state = not self.config["log_self"]
+        self.config["log_self"] = new_state
+        state_str = "<b>ВКЛ</b> ✅" if new_state else "<b>ВЫКЛ</b> ❌"
+        await utils.answer(message, self.strings("toggle_self").format(state_str))
+
     @loader.command(ru_doc="Показать статус и текущие настройки логгера")
     async def logstatus(self, message):
         """Show current configuration status"""
@@ -524,6 +579,7 @@ class DeletedLoggerMod(loader.Module):
                 self.config["log_chat"],
                 "✅" if self.config["log_pms"] else "❌",
                 "✅" if self.config["log_groups"] else "❌",
+                "✅" if self.config["log_self"] else "❌",
                 len(self._get_ignored_chats()),
                 len(self._order),
             ),
