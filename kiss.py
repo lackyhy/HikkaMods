@@ -2,6 +2,7 @@
 
 import html
 import logging
+import re
 from telethon.tl.types import Message
 from telethon.utils import get_display_name
 
@@ -18,6 +19,8 @@ class KissMod(loader.Module):
         "name": "Kiss",
         "no_target": "<b>⚠️ Укажите пользователя (@username/ID) или ответьте на его сообщение!</b>",
         "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
+        "config_gender": "Пол пользователя для RP-команд",
+        "config_allowed_users": "ID или юзернеймы пользователей (через запятую/пробел), которым разрешено использовать RP-команды модуля",
     }
 
     def __init__(self):
@@ -25,10 +28,110 @@ class KissMod(loader.Module):
             loader.ConfigValue(
                 "gender",
                 "по умолчанию",
-                lambda: "Пол пользователя для RP-команд",
+                lambda: self.strings("config_gender"),
                 validator=loader.validators.Choice(["по умолчанию", "мужской", "женский"]),
             ),
+            loader.ConfigValue(
+                "allowed_users",
+                "",
+                lambda: self.strings("config_allowed_users"),
+                validator=loader.validators.String(),
+            ),
         )
+
+    async def client_ready(self, client, db):
+        self._client = client
+        try:
+            me = await client.get_me()
+            self.tg_id = me.id
+        except Exception:
+            pass
+
+    def _get_commands(self):
+        if not hasattr(self, "_commands") or not self._commands:
+            self._commands = {}
+            for attr in dir(self):
+                if attr.endswith("cmd") and callable(getattr(self, attr)):
+                    cmd_name = attr[:-3]
+                    self._commands[cmd_name] = getattr(self, attr)
+        return self._commands
+
+    def _is_allowed(self, message: Message) -> bool:
+        if getattr(message, "out", False):
+            return True
+
+        sender_id = getattr(message, "sender_id", None)
+        if not sender_id:
+            return False
+
+        owner_id = getattr(self, "tg_id", None) or getattr(
+            getattr(self, "_client", None), "tg_id", None
+        )
+        if owner_id and sender_id == owner_id:
+            return True
+
+        raw_allowed = self.config["allowed_users"]
+        if not raw_allowed:
+            return False
+
+        allowed_set = set()
+        allowed_usernames = set()
+        if isinstance(raw_allowed, (int, str)):
+            raw_allowed = [raw_allowed]
+
+        for item in raw_allowed:
+            if isinstance(item, int):
+                allowed_set.add(item)
+            elif isinstance(item, str):
+                for sub in re.split(r"[,\s]+", str(item).strip()):
+                    clean_sub = sub.strip()
+                    if not clean_sub:
+                        continue
+                    if clean_sub.lstrip("-").isdigit():
+                        allowed_set.add(int(clean_sub))
+                    else:
+                        allowed_usernames.add(clean_sub.lstrip("@").lower())
+
+        if sender_id in allowed_set:
+            return True
+
+        sender = getattr(message, "sender", None)
+        username = getattr(sender, "username", None) if sender else None
+        if username and username.lower() in allowed_usernames:
+            return True
+
+        return False
+
+    @loader.watcher()
+    async def watcher(self, message: Message):
+        if not isinstance(message, Message):
+            return
+        if getattr(message, "out", False):
+            return
+
+        if not self._is_allowed(message):
+            return
+
+        text = message.raw_text or message.text or ""
+        if not text:
+            return
+
+        prefix = self.get_prefix() if hasattr(self, "get_prefix") else "."
+        if not text.startswith(prefix):
+            return
+
+        body = text[len(prefix):].strip()
+        if not body:
+            return
+
+        cmd_name = body.split()[0].lower()
+        commands = self._get_commands()
+        func = commands.get(cmd_name)
+        if func:
+            try:
+                await func(message)
+            except Exception as e:
+                logger.error(f"[KissMod] watcher execution error for {cmd_name}: {e}")
 
     def _format_verb(self, verb: str) -> str:
         gender = str(self.config["gender"]).lower().strip()
@@ -65,7 +168,10 @@ class KissMod(loader.Module):
 
         if not target_entity and message.is_private:
             try:
-                target_entity = await message.get_chat()
+                if message.out:
+                    target_entity = await message.get_chat()
+                else:
+                    target_entity = await message.client.get_me()
             except Exception:
                 pass
 
@@ -113,7 +219,10 @@ class KissMod(loader.Module):
             target1 = reply_sender
         elif not target1 and message.is_private:
             try:
-                target1 = await message.get_chat()
+                if message.out:
+                    target1 = await message.get_chat()
+                else:
+                    target1 = await message.client.get_me()
             except Exception:
                 pass
 
@@ -124,15 +233,19 @@ class KissMod(loader.Module):
         return target1, target2, extra_text
 
     async def _send_action(self, message: Message, emoji: str, action_verb: str, post_target: str = ""):
-        me = await message.client.get_me()
+        sender = await message.get_sender()
+        if not sender:
+            sender = await message.client.get_me()
+
         target_entity, extra_text = await self._get_target_and_extra(message)
 
         if not target_entity:
             await utils.answer(message, self.strings("no_target"))
             return
 
-        self_name = utils.escape_html(get_display_name(me))
-        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+        sender_name = utils.escape_html(get_display_name(sender))
+        sender_id = getattr(sender, "id", 0)
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
         target_name = utils.escape_html(get_display_name(target_entity))
         target_id = getattr(target_entity, "id", 0)
@@ -140,7 +253,7 @@ class KissMod(loader.Module):
 
         formatted_verb = self._format_verb(action_verb)
         post_str = f" {post_target}" if post_target else ""
-        out = f"{emoji} <b>{self_link} {formatted_verb} {target_link}{post_str}!</b>"
+        out = f"{emoji} <b>{sender_link} {formatted_verb} {target_link}{post_str}!</b>"
 
         if extra_text:
             out += f"\n<i>«{html.escape(extra_text)}»</i>"
@@ -155,15 +268,19 @@ class KissMod(loader.Module):
         prep_target2: str,
         post_str: str = "",
     ):
-        me = await message.client.get_me()
+        sender = await message.get_sender()
+        if not sender:
+            sender = await message.client.get_me()
+
         t1, t2, extra_text = await self._get_two_targets_and_extra(message)
 
         if not t1 or not t2:
             await utils.answer(message, self.strings("no_two_targets"))
             return
 
-        self_name = utils.escape_html(get_display_name(me))
-        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+        sender_name = utils.escape_html(get_display_name(sender))
+        sender_id = getattr(sender, "id", 0)
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
         t1_name = utils.escape_html(get_display_name(t1))
         t1_link = f'<a href="tg://user?id={getattr(t1, "id", 0)}">{t1_name}</a>'
@@ -173,7 +290,7 @@ class KissMod(loader.Module):
 
         formatted_verb = self._format_verb(verb_between)
         post = f" {post_str}" if post_str else ""
-        out = f"{emoji} <b>{self_link} {formatted_verb} {t1_link} {prep_target2} {t2_link}{post}!</b>"
+        out = f"{emoji} <b>{sender_link} {formatted_verb} {t1_link} {prep_target2} {t2_link}{post}!</b>"
 
         if extra_text:
             out += f"\n<i>«{html.escape(extra_text)}»</i>"
@@ -181,14 +298,17 @@ class KissMod(loader.Module):
         await utils.answer(message, out)
 
     async def _send_all_action(self, message: Message, emoji: str, action_verb: str, target_all_phrase: str):
-        me = await message.client.get_me()
+        sender = await message.get_sender()
+        if not sender:
+            sender = await message.client.get_me()
         extra_text = utils.get_args_raw(message).strip()
 
-        self_name = utils.escape_html(get_display_name(me))
-        self_link = f'<a href="tg://user?id={me.id}">{self_name}</a>'
+        sender_name = utils.escape_html(get_display_name(sender))
+        sender_id = getattr(sender, "id", 0)
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
         formatted_verb = self._format_verb(action_verb)
-        out = f"{emoji} <b>{self_link} {formatted_verb} {target_all_phrase}!</b>"
+        out = f"{emoji} <b>{sender_link} {formatted_verb} {target_all_phrase}!</b>"
 
         if extra_text:
             out += f"\n<i>«{html.escape(extra_text)}»</i>"
@@ -243,6 +363,14 @@ class KissMod(loader.Module):
     async def higcmd(self, message: Message):
         """[@username / reply / extra] — Gently hug"""
         await self._send_action(message, "🫂", "приобнял(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Поцеловать в лобик",
+        en_doc="[@username / reply / extra] — Kiss on the forehead",
+    )
+    async def kiscmd(self, message: Message):
+        """[@username / reply / extra] — Kiss on the forehead"""
+        await self._send_action(message, "💋", "поцеловал(а) в лобик")
 
     @loader.command(
         ru_doc="[@username / reply / extra] — Поцеловать в щёчку",
@@ -553,7 +681,8 @@ class KissMod(loader.Module):
             "<b>✨ Шпаргалка действий</b>\n"
             "<i>(Все команды вводятся в ответ на сообщение)</i>\n\n"
             "<b>Нежные и забота:</b>\n"
-            "💋 <code>.kiss</code> — поцеловать\n"
+            "💋 <code>.kis</code> — поцеловать в лобик\n"
+            "💋 <code>.kiss</code> — поцеловать в щёчку\n"
             "🫂 <code>.hug</code> — крепко обнять\n"
             "🫂 <code>.hig</code> — приобнять\n"
             "🫳 <code>.pat</code> | <code>.patt</code> — погладить по голове\n"
