@@ -669,6 +669,54 @@ class KissMod(loader.Module):
         await self._send_action(message, "🤝", "взял(а) за ручку")
 
     @loader.command(
+        ru_doc="[@username / reply / extra] — Дать печеньку",
+        en_doc="[@username / reply / extra] — Give a cookie",
+    )
+    async def cookiecmd(self, message: Message):
+        """[@username / reply / extra] — Give a cookie"""
+        await self._send_action(message, "🍪", "дал(а) печеньку")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Налить кофе",
+        en_doc="[@username / reply / extra] — Pour coffee",
+    )
+    async def coffeecmd(self, message: Message):
+        """[@username / reply / extra] — Pour coffee"""
+        await self._send_action(message, "☕️", "налил(а) кофе")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Поцеловать в шею",
+        en_doc="[@username / reply / extra] — Kiss neck",
+    )
+    async def kissneckcmd(self, message: Message):
+        """[@username / reply / extra] — Kiss neck"""
+        await self._send_action(message, "💋", "поцеловал(а) в шею")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Признаться в любви",
+        en_doc="[@username / reply / extra] — Confess love",
+    )
+    async def lovecmd(self, message: Message):
+        """[@username / reply / extra] — Confess love"""
+        await self._send_action(message, "❤️", "признался(ась) в любви")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Уложить спать",
+        en_doc="[@username / reply / extra] — Put to sleep",
+    )
+    async def sleepcmd(self, message: Message):
+        """[@username / reply / extra] — Put to sleep"""
+        await self._send_action(message, "💤", "уложил(а) спать")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Сделать массаж",
+        en_doc="[@username / reply / extra] — Give a massage",
+    )
+    async def massagecmd(self, message: Message):
+        """[@username / reply / extra] — Give a massage"""
+        await self._send_action(message, "💆", "сделал(а) массаж")
+
+    @loader.command(
         ru_doc="Показать шпаргалку RP-команд",
         en_doc="Show cheat sheet of RP commands",
     )
@@ -683,6 +731,7 @@ class KissMod(loader.Module):
             "<b>💖 Забота и нежность:</b>\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
             "💋 <code>.kiss</code> — поцеловать в щёчку\n"
+            "💋 <code>.kissneck</code> — поцеловать в шею\n"
             "💋 <code>.kisss</code> — поцеловать в засос\n"
             "🫂 <code>.hug</code> — крепко обнять\n"
             "🫂 <code>.hig</code> — приобнять\n"
@@ -691,8 +740,13 @@ class KissMod(loader.Module):
             "🤝 <code>.hold</code> | <code>.handhold</code> — взять за руку\n"
             "🧣 <code>.blanket</code> — укутать в пледик\n"
             "🍓 <code>.feed</code> — покормить вкусняшкой\n"
-            "☕ <code>.tea</code> — налить чаю\n\n"
-            "<b>😏 Игривые и фларт:</b>\n"
+            "🍪 <code>.cookie</code> — дать печеньку\n"
+            "☕ <code>.tea</code> — налить чаю\n"
+            "☕️ <code>.coffee</code> — налить кофе\n"
+            "❤️ <code>.love</code> — признаться в любви\n"
+            "💤 <code>.sleep</code> — уложить спать\n"
+            "💆 <code>.massage</code> — сделать массаж\n\n"
+            "<b>😏 Игривые и флирт:</b>\n"
             "👅 <code>.lick</code> — лизнуть\n"
             "😼 <code>.bite</code> — укусить\n"
             "🦮 <code>.gbite</code> — нежный кусь\n"
@@ -710,7 +764,7 @@ class KissMod(loader.Module):
             "😮‍💨 <code>.ots</code> — отсосать\n"
             "👉👌 <code>.fuck</code> — трахнуть\n"
             "🔞 <code>.rape</code> — изнасиловать\n\n"
-            "<b>⚡️ Агрессия и шутки:</b>\n"
+            "<b>⚡️ Агрессия и урон:</b>\n"
             "👋 <code>.slap</code> — дать пощёчину\n"
             "👊 <code>.hit</code> — смачно ударить\n"
             "🦶 <code>.fkick</code> | <code>.footkick</code> — пнуть\n"

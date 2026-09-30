@@ -27,6 +27,7 @@
 
 - `.kis [@username / reply / текст]` — Поцеловать в лобик.
 - `.kiss [@username / reply / текст]` — Поцеловать в щёчку.
+- `.kissneck [@username / reply / текст]` — Поцеловать в шею.
 - `.kisss [@username / reply / текст]` — Поцеловать в засос.
 - `.patt [@username / reply / текст]` — Погладить по голове.
 - `.pat [@username / reply / текст]` — Погладить по голове.
@@ -42,6 +43,12 @@
 - `.handhold [@username / reply / текст]` — Взять за ручку.
 - `.hold [@username / reply / текст]` — Взять за ручку.
 - `.feed [@username / reply / текст]` — Покормить вкусняшкой.
+- `.cookie [@username / reply / текст]` — Дать печеньку.
+- `.tea [@username / reply / текст]` — Налить чаю.
+- `.coffee [@username / reply / текст]` — Налить кофе.
+- `.love [@username / reply / текст]` — Признаться в любви.
+- `.sleep [@username / reply / текст]` — Уложить спать.
+- `.massage [@username / reply / текст]` — Сделать массаж.
 - `.poke [@username / reply / текст]` — Потыкать пальцем.
 - `.ots [@username / reply / текст]` — Отсосать.
 - `.otsa [текст]` — Отсосать всем.
@@ -63,7 +70,6 @@
 - `.ship [@target1] [@target2 / reply] [текст]` — Зашипперить @target1 с @target2.
 - `.gossip [@target1] [@target2 / reply] [текст]` — Посплетничать с @target1 о @target2.
 - `.blanket [@username / reply / текст]` — Укутать в пледик.
-- `.tea [@username / reply / текст]` — Налить чаю.
 - `.squish [@username / reply / текст]` — Потискать за щёчки.
 - `.pinch [@username / reply / текст]` — Игриво ущипнуть.
 - `.burn [@username / reply / текст]` — Испепелить взглядом.
