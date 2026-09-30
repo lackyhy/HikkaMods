@@ -528,14 +528,6 @@ class KissMod(loader.Module):
         ru_doc="Показать шпаргалку RP-команд",
         en_doc="Show cheat sheet of RP commands",
     )
-    async def helpcmd(self, message: Message):
-        """Show cheat sheet of RP commands"""
-        await self._show_help(message)
-
-    @loader.command(
-        ru_doc="Показать шпаргалку RP-команд",
-        en_doc="Show cheat sheet of RP commands",
-    )
     async def kisshelpcmd(self, message: Message):
         """Show cheat sheet of RP commands"""
         await self._show_help(message)
