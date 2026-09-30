@@ -63,7 +63,7 @@
 - `.ship [@target1] [@target2 / reply] [текст]` — Зашипперить @target1 с @target2.
 - `.gossip [@target1] [@target2 / reply] [текст]` — Посплетничать с @target1 о @target2.
 - `.blanket [@username / reply / текст]` — Укутать в пледик.
-- `.tea [@username / reply / текст]` — Угостить горячим чаем.
+- `.tea [@username / reply / текст]` — Налить чаю.
 - `.squish [@username / reply / текст]` — Потискать за щёчки.
 - `.pinch [@username / reply / текст]` — Игриво ущипнуть.
 - `.burn [@username / reply / текст]` — Испепелить взглядом.

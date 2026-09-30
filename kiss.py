@@ -613,12 +613,12 @@ class KissMod(loader.Module):
         await self._send_action(message, "🧣", "укутал(а)", "в пледик")
 
     @loader.command(
-        ru_doc="[@username / reply / extra] — Угостить горячим чаем",
-        en_doc="[@username / reply / extra] — Treat with hot tea",
+        ru_doc="[@username / reply / extra] — Налить чаю",
+        en_doc="[@username / reply / extra] — Pour tea",
     )
     async def teacmd(self, message: Message):
-        """[@username / reply / extra] — Treat with hot tea"""
-        await self._send_action(message, "☕", "угостил(а)", "горячим чаем")
+        """[@username / reply / extra] — Pour tea"""
+        await self._send_action(message, "☕", "налил(а) чаю")
 
     @loader.command(
         ru_doc="[@username / reply / extra] — Потискать за щёчки",
@@ -678,38 +678,51 @@ class KissMod(loader.Module):
 
     async def _show_help(self, message: Message):
         help_text = (
-            "<b>✨ Шпаргалка действий</b>\n"
-            "<i>(Все команды вводятся в ответ на сообщение)</i>\n\n"
-            "<b>Нежные и забота:</b>\n"
+            "<b>✨ Шпаргалка RP-действий</b>\n"
+            "<i>(Укажите юзернейм/ID, ответьте на сообщение или используйте в ЛС)</i>\n\n"
+            "<b>💖 Забота и нежность:</b>\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
             "💋 <code>.kiss</code> — поцеловать в щёчку\n"
+            "💋 <code>.kisss</code> — поцеловать в засос\n"
             "🫂 <code>.hug</code> — крепко обнять\n"
             "🫂 <code>.hig</code> — приобнять\n"
             "🫳 <code>.pat</code> | <code>.patt</code> — погладить по голове\n"
-            "🥰 <code>.cuddle</code> — прижать к себе\n"
+            "🥰 <code>.cuddle</code> — прижаться к себе\n"
             "🤝 <code>.hold</code> | <code>.handhold</code> — взять за руку\n"
             "🧣 <code>.blanket</code> — укутать в пледик\n"
             "🍓 <code>.feed</code> — покормить вкусняшкой\n"
-            "☕ <code>.tea</code> — угостить горячим чаем\n\n"
-            "<b>Игривые и дерзкие:</b>\n"
+            "☕ <code>.tea</code> — налить чаю\n\n"
+            "<b>😏 Игривые и фларт:</b>\n"
             "👅 <code>.lick</code> — лизнуть\n"
-            "🍑 <code>.spank</code> — звонко шлёпнуть\n"
-            "😼 <code>.bite</code> — сделать кусь\n"
+            "😼 <code>.bite</code> — укусить\n"
+            "🦮 <code>.gbite</code> — нежный кусь\n"
             "🤏 <code>.squish</code> — потискать за щёчки\n"
             "🤏 <code>.pinch</code> — игриво ущипнуть\n"
-            "👉 <code>.poke</code> — тыкнуть пальцем\n\n"
-            "<b>Урон и агрессия:</b>\n"
+            "👉 <code>.poke</code> — тыкнуть пальцем\n"
+            "👉 <code>.boop</code> — тыкнуть в носик\n"
+            "😉 <code>.wink</code> — подмигнуть\n"
+            "🍑 <code>.spank</code> — шлёпнуть по попке\n\n"
+            "<b>🔥 Горячие и 18+:</b>\n"
+            "🍑 <code>.sitface</code> — сесть на лицо\n"
+            "👐 <code>.grope</code> — полапать за интимные места\n"
+            "🤲 <code>.feel</code> — помацать\n"
+            "👅 <code>.otl</code> — отлизать\n"
+            "😮‍💨 <code>.ots</code> — отсосать\n"
+            "👉👌 <code>.fuck</code> — трахнуть\n"
+            "🔞 <code>.rape</code> — изнасиловать\n\n"
+            "<b>⚡️ Агрессия и шутки:</b>\n"
             "👋 <code>.slap</code> — дать пощёчину\n"
             "👊 <code>.hit</code> — смачно ударить\n"
+            "🦶 <code>.fkick</code> | <code>.footkick</code> — пнуть\n"
+            "🫲 <code>.headslap</code> — дать подзатыльник\n"
+            "🤏 <code>.tickle</code> — пощекотать\n"
             "💀 <code>.burn</code> | <code>.incinerate</code> — испепелить взглядом\n\n"
-            "<b>Другие RP-команды:</b>\n"
-            "💋 <code>.kisss</code> — поцеловать в засос | 👅 <code>.otl</code> — отлизать | 😮‍💨 <code>.ots</code> — отсосать\n"
-            "🦮 <code>.gbite</code> — нежный кусь | 🦶 <code>.fkick</code> — пнуть | 🤏 <code>.tickle</code> — пощекотать\n"
-            "🍑 <code>.sitface</code> — сесть на лицо | 👐 <code>.grope</code> — полапать | 😉 <code>.wink</code> — подмигнуть\n"
-            "🫲 <code>.headslap</code> — подзатыльник | 👉👌 <code>.fuck</code> — трахнуть | 🤲 <code>.feel</code> — помацать\n"
-            "🔞 <code>.rape</code> — изнасиловать | 🤣 <code>.laugh</code> — посмеяться | 👩‍❤️‍👨 <code>.ship</code> — зашипперить | 🗣 <code>.gossip</code> — посплетничать\n\n"
-            "<b>Массовые команды:</b>\n"
-            "😮‍💨 <code>.otsa</code> | 👅 <code>.otla</code> | 👉👌 <code>.fucka</code> | 🫂 <code>.huga</code>"
+            "<b>👥 Парные команды:</b>\n"
+            "🤣 <code>.laugh</code> — посмеяться с @user1 над @user2\n"
+            "👩‍❤️‍👨 <code>.ship</code> — зашипперить @user1 с @user2\n"
+            "🗣 <code>.gossip</code> — посплетничать с @user1 о @user2\n\n"
+            "<b>🌐 Массовые (на всех):</b>\n"
+            "🫂 <code>.huga</code> | 😮‍💨 <code>.otsa</code> | 👅 <code>.otla</code> | 👉👌 <code>.fucka</code>"
         )
         await utils.answer(message, help_text)
 
