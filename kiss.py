@@ -368,7 +368,15 @@ class KissMod(loader.Module):
         ru_doc="[@username / reply / extra] — Пнуть",
         en_doc="[@username / reply / extra] — Kick",
     )
-    async def kickcmd(self, message: Message):
+    async def footkickcmd(self, message: Message):
+        """[@username / reply / extra] — Kick"""
+        await self._send_action(message, "🦶", "пнул(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Пнуть",
+        en_doc="[@username / reply / extra] — Kick",
+    )
+    async def fkickcmd(self, message: Message):
         """[@username / reply / extra] — Kick"""
         await self._send_action(message, "🦶", "пнул(а)")
 
@@ -567,7 +575,7 @@ class KissMod(loader.Module):
             "💀 <code>.burn</code> | <code>.incinerate</code> — испепелить взглядом\n\n"
             "<b>Другие RP-команды:</b>\n"
             "💋 <code>.kisss</code> — поцеловать в засос | 👅 <code>.otl</code> — отлизать | 😮‍💨 <code>.ots</code> — отсосать\n"
-            "🦮 <code>.gbite</code> — нежный кусь | 🦶 <code>.kick</code> — пнуть | 🤏 <code>.tickle</code> — пощекотать\n"
+            "🦮 <code>.gbite</code> — нежный кусь | 🦶 <code>.fkick</code> — пнуть | 🤏 <code>.tickle</code> — пощекотать\n"
             "🍑 <code>.sitface</code> — сесть на лицо | 👐 <code>.grope</code> — полапать | 😉 <code>.wink</code> — подмигнуть\n"
             "🫲 <code>.headslap</code> — подзатыльник | 👉👌 <code>.fuck</code> — трахнуть | 🤲 <code>.feel</code> — помацать\n"
             "🔞 <code>.rape</code> — изнасиловать | 🤣 <code>.laugh</code> — посмеяться | 👩‍❤️‍👨 <code>.ship</code> — зашипперить | 🗣 <code>.gossip</code> — посплетничать\n\n"

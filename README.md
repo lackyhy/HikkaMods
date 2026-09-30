@@ -42,7 +42,7 @@
 - `.hit [@username / reply / текст]` — Ударить.
 - `.rape [@username / reply / текст]` — Изнасиловать.
 - `.gbite [@username / reply / текст]` — Нежный кусь.
-- `.kick [@username / reply / текст]` — Пнуть.
+- `.fkick [@username / reply / текст]` — Пнуть.
 - `.tickle [@username / reply / текст]` — Пощекотать.
 - `.sitface [@username / reply / текст]` — Сесть на лицо.
 - `.spank [@username / reply / текст]` — Шлёпнуть за попку.
