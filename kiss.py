@@ -504,7 +504,15 @@ class KissMod(loader.Module):
         ru_doc="[@username / reply / extra] — Испепелить взглядом",
         en_doc="[@username / reply / extra] — Incinerate with a glance",
     )
-    async def killcmd(self, message: Message):
+    async def burncmd(self, message: Message):
+        """[@username / reply / extra] — Incinerate with a glance"""
+        await self._send_action(message, "💀", "испепелил(а)", "взглядом")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Испепелить взглядом",
+        en_doc="[@username / reply / extra] — Incinerate with a glance",
+    )
+    async def incineratecmd(self, message: Message):
         """[@username / reply / extra] — Incinerate with a glance"""
         await self._send_action(message, "💀", "испепелил(а)", "взглядом")
 
@@ -556,7 +564,7 @@ class KissMod(loader.Module):
             "<b>Урон и агрессия:</b>\n"
             "👋 <code>.slap</code> — дать пощёчину\n"
             "👊 <code>.hit</code> — смачно ударить\n"
-            "💀 <code>.kill</code> — испепелить взглядом\n\n"
+            "💀 <code>.burn</code> | <code>.incinerate</code> — испепелить взглядом\n\n"
             "<b>Другие RP-команды:</b>\n"
             "💋 <code>.kisss</code> — поцеловать в засос | 👅 <code>.otl</code> — отлизать | 😮‍💨 <code>.ots</code> — отсосать\n"
             "🦮 <code>.gbite</code> — нежный кусь | 🦶 <code>.kick</code> — пнуть | 🤏 <code>.tickle</code> — пощекотать\n"

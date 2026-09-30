@@ -62,7 +62,8 @@
 - `.tea [@username / reply / текст]` — Угостить горячим чаем.
 - `.squish [@username / reply / текст]` — Потискать за щёчки.
 - `.pinch [@username / reply / текст]` — Игриво ущипнуть.
-- `.kill [@username / reply / текст]` — Испепелить взглядом.
+- `.burn [@username / reply / текст]` — Испепелить взглядом.
+- `.incinerate [@username / reply / текст]` — Испепелить взглядом.
 - `.pat [@username / reply / текст]` — Погладить по голове.
 - `.hold [@username / reply / текст]` — Взять за ручку.
 - `.kisshelp` — Показать красивую шпаргалку RP-команд.
