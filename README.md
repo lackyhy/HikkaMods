@@ -58,6 +58,14 @@
 - `.otla [текст]` — Отлизать всем.
 - `.fucka [текст]` — Трахнуть всех.
 - `.huga [текст]` — Обнять всех.
+- `.blanket [@username / reply / текст]` — Укутать в пледик.
+- `.tea [@username / reply / текст]` — Угостить горячим чаем.
+- `.squish [@username / reply / текст]` — Потискать за щёчки.
+- `.pinch [@username / reply / текст]` — Игриво ущипнуть.
+- `.kill [@username / reply / текст]` — Испепелить взглядом.
+- `.pat [@username / reply / текст]` — Погладить по голове.
+- `.hold [@username / reply / текст]` — Взять за ручку.
+- `.kisshelp` — Показать красивую шпаргалку RP-команд.
 
 ---
 
@@ -243,24 +251,3 @@
 - `.ignorechat` — Добавить или удалить чат/ЛС из игнорируемых.
 - `.togglelogself` — Включить или выключить логирование собственных сообщений.
 - `.logstatus` — Показать настройки и статус логгера.
-
----
-
-## 🚀 Быстрая установка всех модулей разом
-
-Отправьте в Telegram следующие команды по очереди:
-
-```text
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/kiss.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/Utils.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/MessageLogger.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TempMail.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/download.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/flags.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/text.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/usdt2rub.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/sinf.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/TicTacToe.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/coin.py
-.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/btn.py
-```
