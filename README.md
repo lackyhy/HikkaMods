@@ -26,6 +26,7 @@
 
 - `.patt [@username / reply / текст]` — Погладить по голове.
 - `.hug [@username / reply / текст]` — Обнять.
+- `.hig [@username / reply / текст]` — Приобнять.
 - `.kiss [@username / reply / текст]` — Поцеловать в щёчку.
 - `.kisss [@username / reply / текст]` — Поцеловать в засос.
 - `.lick [@username / reply / текст]` — Облизать.

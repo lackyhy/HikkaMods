@@ -237,6 +237,14 @@ class KissMod(loader.Module):
         await self._send_action(message, "🫂", "обнял(а)")
 
     @loader.command(
+        ru_doc="[@username / reply / extra] — Приобнять",
+        en_doc="[@username / reply / extra] — Gently hug",
+    )
+    async def higcmd(self, message: Message):
+        """[@username / reply / extra] — Gently hug"""
+        await self._send_action(message, "🫂", "приобнял(а)")
+
+    @loader.command(
         ru_doc="[@username / reply / extra] — Поцеловать в щёчку",
         en_doc="[@username / reply / extra] — Kiss on the cheek",
     )
