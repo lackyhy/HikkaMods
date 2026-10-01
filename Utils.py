@@ -202,7 +202,7 @@ class UtilsMod(loader.Module):
         args = utils.get_args_raw(message).strip()
         reply = await message.get_reply_message()
 
-        out = "<b>ℹ️ Информация об ID:</b>\n\n"
+        out = ""
 
         try:
             me = await message.client.get_me()
