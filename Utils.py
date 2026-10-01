@@ -190,11 +190,25 @@ class UtilsMod(loader.Module):
         """[username/link/reply] — Alias for .chatid"""
         await self._get_id_info(message)
 
+    @loader.command(
+        ru_doc="[username/link/reply] — Получить свой ID, ID чата и ID цели",
+        en_doc="[username/link/reply] — Get your ID, chat ID, and target ID",
+    )
+    async def idcmd(self, message: Message):
+        """[username/link/reply] — Получить свой ID, ID чата и ID цели"""
+        await self._get_id_info(message)
+
     async def _get_id_info(self, message: Message):
         args = utils.get_args_raw(message).strip()
         reply = await message.get_reply_message()
 
         out = "<b>ℹ️ Информация об ID:</b>\n\n"
+
+        try:
+            me = await message.client.get_me()
+            out += f"👤 <b>Мой ID:</b> <code>{me.id}</code>\n"
+        except:
+            pass
 
         chat_id = utils.get_chat_id(message)
         out += f"💬 <b>ID Чата:</b> <code>{chat_id}</code>\n"
