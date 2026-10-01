@@ -19,8 +19,9 @@ class KissMod(loader.Module):
         "name": "Kiss",
         "no_target": "<b>⚠️ Укажите пользователя (@username/ID) или ответьте на его сообщение!</b>",
         "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
-        "config_gender": "Пол пользователя для RP-команд",
+        "config_gender": "Пол владельца для RP-команд",
         "config_allowed_users": "ID или юзернеймы пользователей (через запятую/пробел), которым разрешено использовать RP-команды модуля",
+        "config_user_genders": "Гендеры для разрешённых пользователей в формате ID:пол или @username:пол (например: 123456789: ж, @friend: женский)",
     }
 
     def __init__(self):
@@ -35,6 +36,12 @@ class KissMod(loader.Module):
                 "allowed_users",
                 "",
                 lambda: self.strings("config_allowed_users"),
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "user_genders",
+                "",
+                lambda: self.strings("config_user_genders"),
                 validator=loader.validators.String(),
             ),
         )
@@ -133,8 +140,54 @@ class KissMod(loader.Module):
             except Exception as e:
                 logger.error(f"[KissMod] watcher execution error for {cmd_name}: {e}")
 
-    def _format_verb(self, verb: str) -> str:
-        gender = str(self.config["gender"]).lower().strip()
+    def _get_gender_for_sender(self, sender) -> str:
+        if not sender:
+            return str(self.config["gender"]).lower().strip()
+
+        sender_id = getattr(sender, "id", None)
+        username = getattr(sender, "username", None)
+        if username:
+            username = username.lower().lstrip("@")
+
+        owner_id = getattr(self, "tg_id", None) or getattr(
+            getattr(self, "_client", None), "tg_id", None
+        )
+
+        raw_user_genders = self.config["user_genders"]
+        if raw_user_genders:
+            items = []
+            if isinstance(raw_user_genders, str):
+                items = re.split(r"[,\n;]+", raw_user_genders.strip())
+            elif isinstance(raw_user_genders, (list, tuple)):
+                items = raw_user_genders
+
+            for item in items:
+                if ":" in str(item):
+                    user_part, gender_part = str(item).split(":", 1)
+                    user_part = user_part.strip().lower().lstrip("@")
+                    g_val = gender_part.strip().lower()
+
+                    match = False
+                    if sender_id and user_part.lstrip("-").isdigit() and int(user_part) == sender_id:
+                        match = True
+                    elif username and user_part == username:
+                        match = True
+
+                    if match:
+                        if g_val in ["ж", "женский", "female", "f"]:
+                            return "женский"
+                        elif g_val in ["м", "мужской", "male", "m"]:
+                            return "мужской"
+                        elif g_val in ["дефолт", "по умолчанию", "default"]:
+                            return "по умолчанию"
+
+        if owner_id and sender_id == owner_id:
+            return str(self.config["gender"]).lower().strip()
+
+        return str(self.config["gender"]).lower().strip()
+
+    def _format_verb(self, verb: str, sender=None) -> str:
+        gender = self._get_gender_for_sender(sender)
         if gender in ["мужской", "male", "m"]:
             return verb.replace("(ась)", "").replace("(а)", "").replace("(a)", "")
         elif gender in ["женский", "female", "f"]:
@@ -251,7 +304,7 @@ class KissMod(loader.Module):
         target_id = getattr(target_entity, "id", 0)
         target_link = f'<a href="tg://user?id={target_id}">{target_name}</a>'
 
-        formatted_verb = self._format_verb(action_verb)
+        formatted_verb = self._format_verb(action_verb, sender=sender)
         post_str = f" {post_target}" if post_target else ""
         out = f"{emoji} <b>{sender_link} {formatted_verb} {target_link}{post_str}!</b>"
 
@@ -288,7 +341,7 @@ class KissMod(loader.Module):
         t2_name = utils.escape_html(get_display_name(t2))
         t2_link = f'<a href="tg://user?id={getattr(t2, "id", 0)}">{t2_name}</a>'
 
-        formatted_verb = self._format_verb(verb_between)
+        formatted_verb = self._format_verb(verb_between, sender=sender)
         post = f" {post_str}" if post_str else ""
         out = f"{emoji} <b>{sender_link} {formatted_verb} {t1_link} {prep_target2} {t2_link}{post}!</b>"
 
@@ -307,7 +360,7 @@ class KissMod(loader.Module):
         sender_id = getattr(sender, "id", 0)
         sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
-        formatted_verb = self._format_verb(action_verb)
+        formatted_verb = self._format_verb(action_verb, sender=sender)
         out = f"{emoji} <b>{sender_link} {formatted_verb} {target_all_phrase}!</b>"
 
         if extra_text:
@@ -326,7 +379,7 @@ class KissMod(loader.Module):
         sender_id = getattr(sender, "id", 0)
         sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
 
-        formatted_verb = self._format_verb(action_verb)
+        formatted_verb = self._format_verb(action_verb, sender=sender)
         out = f"{emoji} <b>{sender_link} {formatted_verb}!</b>"
 
         if extra_text:
@@ -741,7 +794,7 @@ class KissMod(loader.Module):
     )
     async def batoncmd(self, message: Message):
         """[extra] — Curl up like a bud"""
-        await self._send_solo_action(message, "🌸", "забутонился(ась)")
+        await self._send_solo_action(message, "🧣", "забатонился(ась)")
 
     @loader.command(
         ru_doc="Показать шпаргалку RP-команд",
@@ -756,7 +809,7 @@ class KissMod(loader.Module):
             "<b>✨ Шпаргалка RP-действий</b>\n"
             "<i>(Укажите юзернейм/ID, ответьте на сообщение или используйте в ЛС)</i>\n\n"
             "<b>💖 Забота и нежность:</b>\n"
-            "🌸 <code>.baton</code> — забутониться\n"
+            "🧣 <code>.baton</code> — забутониться\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
             "💋 <code>.kiss</code> — поцеловать в щёчку\n"
             "💋 <code>.kissneck</code> — поцеловать в шею\n"
