@@ -220,15 +220,15 @@ class UtilsMod(loader.Module):
         if topic_id:
             out += f"🏷 <b>ID Топика:</b> <code>{topic_id}</code>\n"
 
-        out += f"✉️ <b>ID Сообщения:</b> <code>{message.id}</code>\n"
+        target_entity = None
+        if args:
+            try:
+                target_entity = await message.client.get_entity(args)
+            except Exception as e:
+                out += f"❌ <b>Ошибка поиска:</b> <code>{html.escape(str(e))}</code>\n"
+        elif reply:
+            target_entity = await reply.get_sender()
 
-        if reply:
-            out += "\n<b>[Реплай]</b>\n"
-            out += f"✉️ <b>ID Сообщения:</b> <code>{reply.id}</code>\n"
-            sender = await reply.get_sender()
-            if sender:
-                out += f"👤 <b>ID Отправителя:</b> <code>{getattr(sender, 'id', 'Неизвестно')}</code>\n"
-            
             fwd = getattr(reply, "fwd_from", None)
             if fwd:
                 if getattr(fwd, "from_id", None):
@@ -239,13 +239,8 @@ class UtilsMod(loader.Module):
                 elif getattr(fwd, "from_name", None):
                     out += f"🔄 <b>Автор форварда:</b> <code>{html.escape(fwd.from_name)}</code> (Скрыт)\n"
 
-        if args:
-            out += f"\n<b>[Поиск: {html.escape(args)}]</b>\n"
-            try:
-                entity = await message.client.get_entity(args)
-                ent_type = "Пользователя" if getattr(entity, "first_name", None) is not None else ("Канала" if getattr(entity, "broadcast", False) else "Группы")
-                out += f"🔍 <b>ID {ent_type}:</b> <code>{entity.id}</code>\n"
-            except Exception as e:
-                out += f"❌ <b>Ошибка поиска:</b> <code>{html.escape(str(e))}</code>\n"
+        if target_entity:
+            ent_type = "Пользователя" if getattr(target_entity, "first_name", None) is not None else ("Канала" if getattr(target_entity, "broadcast", False) else "Группы")
+            out += f"🎯 <b>ID {ent_type} (цели):</b> <code>{target_entity.id}</code>\n"
 
         await utils.answer(message, out)
