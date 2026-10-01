@@ -824,7 +824,7 @@ class KissMod(loader.Module):
         ru_doc="[extra] — Помяукать",
         en_doc="[extra] — Meow",
     )
-    async def moewcmd(self, message: Message):
+    async def meowcmd(self, message: Message):
         """[extra] — Meow"""
         await self._send_solo_action(message, "🐈‍⬛", "помяукал(а)")
 
@@ -843,7 +843,7 @@ class KissMod(loader.Module):
             "<b>💖 Забота и нежность:</b>\n"
             "🧣 <code>.baton</code> — забутониться\n"
             "🐈 <code>.murr</code> — помурчать\n"
-            "🐈‍⬛ <code>.moew</code> — помяукать\n"
+            "🐈‍⬛ <code>.meow</code> — помяукать\n"
             "💅 <code>.chuh</code> — почухать\n"
             "💅 <code>.zachuh</code> — зачухать\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
