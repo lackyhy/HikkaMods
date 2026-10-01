@@ -47,14 +47,14 @@ class KissMod(loader.Module):
         except Exception:
             pass
 
-    def _get_commands(self):
-        if not hasattr(self, "_commands") or not self._commands:
-            self._commands = {}
+    def _get_rp_map(self):
+        if not hasattr(self, "_rp_map") or not self._rp_map:
+            self._rp_map = {}
             for attr in dir(self):
                 if attr.endswith("cmd") and callable(getattr(self, attr)):
                     cmd_name = attr[:-3]
-                    self._commands[cmd_name] = getattr(self, attr)
-        return self._commands
+                    self._rp_map[cmd_name] = getattr(self, attr)
+        return self._rp_map
 
     def _is_allowed(self, message: Message) -> bool:
         if getattr(message, "out", False):
@@ -125,8 +125,8 @@ class KissMod(loader.Module):
             return
 
         cmd_name = body.split()[0].lower()
-        commands = self._get_commands()
-        func = commands.get(cmd_name)
+        rp_map = self._get_rp_map()
+        func = rp_map.get(cmd_name)
         if func:
             try:
                 await func(message)
