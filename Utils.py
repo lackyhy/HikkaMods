@@ -173,3 +173,65 @@ class UtilsMod(loader.Module):
                     pass
         except Exception as exc:
             await utils.answer(status_msg, f"<b>❌ Ошибка отправки QR-кода:</b> <code>{html.escape(str(exc))}</code>")
+
+    @loader.command(
+        ru_doc="[username/link/reply] — Получить ID чата, пользователя или топика",
+        en_doc="[username/link/reply] — Get ID of chat, user or topic",
+    )
+    async def chatidcmd(self, message: Message):
+        """[username/link/reply] — Получить ID чата, пользователя или топика"""
+        await self._get_id_info(message)
+
+    @loader.command(
+        ru_doc="[username/link/reply] — Алиас для .chatid",
+        en_doc="[username/link/reply] — Alias for .chatid",
+    )
+    async def chidcmd(self, message: Message):
+        """[username/link/reply] — Alias for .chatid"""
+        await self._get_id_info(message)
+
+    async def _get_id_info(self, message: Message):
+        args = utils.get_args_raw(message).strip()
+        reply = await message.get_reply_message()
+
+        out = "<b>ℹ️ Информация об ID:</b>\n\n"
+
+        chat_id = utils.get_chat_id(message)
+        out += f"💬 <b>ID Чата:</b> <code>{chat_id}</code>\n"
+
+        topic_id = None
+        if message.reply_to and getattr(message.reply_to, "forum_topic", False):
+            topic_id = getattr(message.reply_to, "reply_to_top_id", None) or getattr(message.reply_to, "reply_to_msg_id", None)
+        
+        if topic_id:
+            out += f"🏷 <b>ID Топика:</b> <code>{topic_id}</code>\n"
+
+        out += f"✉️ <b>ID Сообщения:</b> <code>{message.id}</code>\n"
+
+        if reply:
+            out += "\n<b>[Реплай]</b>\n"
+            out += f"✉️ <b>ID Сообщения:</b> <code>{reply.id}</code>\n"
+            sender = await reply.get_sender()
+            if sender:
+                out += f"👤 <b>ID Отправителя:</b> <code>{getattr(sender, 'id', 'Неизвестно')}</code>\n"
+            
+            fwd = getattr(reply, "fwd_from", None)
+            if fwd:
+                if getattr(fwd, "from_id", None):
+                    peer = fwd.from_id
+                    fwd_id = getattr(peer, "user_id", None) or getattr(peer, "channel_id", None) or getattr(peer, "chat_id", None)
+                    if fwd_id:
+                        out += f"🔄 <b>ID Оригинала (форвард):</b> <code>{fwd_id}</code>\n"
+                elif getattr(fwd, "from_name", None):
+                    out += f"🔄 <b>Автор форварда:</b> <code>{html.escape(fwd.from_name)}</code> (Скрыт)\n"
+
+        if args:
+            out += f"\n<b>[Поиск: {html.escape(args)}]</b>\n"
+            try:
+                entity = await message.client.get_entity(args)
+                ent_type = "Пользователя" if getattr(entity, "first_name", None) is not None else ("Канала" if getattr(entity, "broadcast", False) else "Группы")
+                out += f"🔍 <b>ID {ent_type}:</b> <code>{entity.id}</code>\n"
+            except Exception as e:
+                out += f"❌ <b>Ошибка поиска:</b> <code>{html.escape(str(e))}</code>\n"
+
+        await utils.answer(message, out)
