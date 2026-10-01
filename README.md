@@ -75,6 +75,10 @@
 - `.pinch [@username / reply / текст]` — Игриво ущипнуть.
 - `.burn [@username / reply / текст]` — Испепелить взглядом.
 - `.incinerate [@username / reply / текст]` — Испепелить взглядом.
+- `.murr [текст]` — Помурчать.
+- `.moew [текст]` — Помяукать.
+- `.chuh [@username / reply / текст]` — Почухать.
+- `.zachuh [@username / reply / текст]` — Зачухать.
 - `.kisshelp` — Показать красивую шпаргалку RP-команд.
 
 </details>

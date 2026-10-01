@@ -797,6 +797,38 @@ class KissMod(loader.Module):
         await self._send_solo_action(message, "🧣", "забатонился(ась)")
 
     @loader.command(
+        ru_doc="[@username / reply / extra] — Почухать",
+        en_doc="[@username / reply / extra] — Scratch",
+    )
+    async def chuhcmd(self, message: Message):
+        """[@username / reply / extra] — Scratch"""
+        await self._send_action(message, "💅", "почухал(а)")
+
+    @loader.command(
+        ru_doc="[@username / reply / extra] — Зачухать",
+        en_doc="[@username / reply / extra] — Scratch intensely",
+    )
+    async def zachuhcmd(self, message: Message):
+        """[@username / reply / extra] — Scratch intensely"""
+        await self._send_action(message, "💅", "зачухал(а)")
+
+    @loader.command(
+        ru_doc="[extra] — Мурчать",
+        en_doc="[extra] — Purr",
+    )
+    async def murrcmd(self, message: Message):
+        """[extra] — Purr"""
+        await self._send_solo_action(message, "🐈", "помурчал(а)")
+
+    @loader.command(
+        ru_doc="[extra] — Помяукать",
+        en_doc="[extra] — Meow",
+    )
+    async def moewcmd(self, message: Message):
+        """[extra] — Meow"""
+        await self._send_solo_action(message, "🐈‍⬛", "помяукал(а)")
+
+    @loader.command(
         ru_doc="Показать шпаргалку RP-команд",
         en_doc="Show cheat sheet of RP commands",
     )
@@ -810,6 +842,10 @@ class KissMod(loader.Module):
             "<i>(Укажите юзернейм/ID, ответьте на сообщение или используйте в ЛС)</i>\n\n"
             "<b>💖 Забота и нежность:</b>\n"
             "🧣 <code>.baton</code> — забутониться\n"
+            "🐈 <code>.murr</code> — помурчать\n"
+            "🐈‍⬛ <code>.moew</code> — помяукать\n"
+            "💅 <code>.chuh</code> — почухать\n"
+            "💅 <code>.zachuh</code> — зачухать\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
             "💋 <code>.kiss</code> — поцеловать в щёчку\n"
             "💋 <code>.kissneck</code> — поцеловать в шею\n"
