@@ -315,6 +315,25 @@ class KissMod(loader.Module):
 
         await utils.answer(message, out)
 
+    async def _send_solo_action(self, message: Message, emoji: str, action_verb: str):
+        sender = await message.get_sender()
+        if not sender:
+            sender = await message.client.get_me()
+
+        extra_text = utils.get_args_raw(message).strip()
+
+        sender_name = utils.escape_html(get_display_name(sender))
+        sender_id = getattr(sender, "id", 0)
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>'
+
+        formatted_verb = self._format_verb(action_verb)
+        out = f"{emoji} <b>{sender_link} {formatted_verb}!</b>"
+
+        if extra_text:
+            out += f"\n<i>«{html.escape(extra_text)}»</i>"
+
+        await utils.answer(message, out)
+
     @loader.command(
         ru_doc="[@user1] [@user2 / reply] [extra] — Посмеяться вместе с @target1 над @target2",
         en_doc="[@user1] [@user2 / reply] [extra] — Laugh together with @target1 at @target2",
@@ -717,6 +736,14 @@ class KissMod(loader.Module):
         await self._send_action(message, "💆", "сделал(а) массаж")
 
     @loader.command(
+        ru_doc="[extra] — Забутониться",
+        en_doc="[extra] — Curl up like a bud",
+    )
+    async def batoncmd(self, message: Message):
+        """[extra] — Curl up like a bud"""
+        await self._send_solo_action(message, "🌸", "забутонился(ась)")
+
+    @loader.command(
         ru_doc="Показать шпаргалку RP-команд",
         en_doc="Show cheat sheet of RP commands",
     )
@@ -729,6 +756,7 @@ class KissMod(loader.Module):
             "<b>✨ Шпаргалка RP-действий</b>\n"
             "<i>(Укажите юзернейм/ID, ответьте на сообщение или используйте в ЛС)</i>\n\n"
             "<b>💖 Забота и нежность:</b>\n"
+            "🌸 <code>.baton</code> — забутониться\n"
             "💋 <code>.kis</code> — поцеловать в лобик\n"
             "💋 <code>.kiss</code> — поцеловать в щёчку\n"
             "💋 <code>.kissneck</code> — поцеловать в шею\n"
@@ -779,5 +807,3 @@ class KissMod(loader.Module):
             "🫂 <code>.huga</code> | 😮‍💨 <code>.otsa</code> | 👅 <code>.otla</code> | 👉👌 <code>.fucka</code>"
         )
         await utils.answer(message, help_text)
-
-

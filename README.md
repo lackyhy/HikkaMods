@@ -25,6 +25,7 @@
 <details>
 <summary>📋 Список команд (нажмите, чтобы развернуть)</summary>
 
+- `.baton [текст]` — Забутониться.
 - `.kis [@username / reply / текст]` — Поцеловать в лобик.
 - `.kiss [@username / reply / текст]` — Поцеловать в щёчку.
 - `.kissneck [@username / reply / текст]` — Поцеловать в шею.
