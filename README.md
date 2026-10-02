@@ -48,6 +48,7 @@
 - `.tea [@username / reply / текст]` — Налить чаю.
 - `.coffee [@username / reply / текст]` — Налить кофе.
 - `.love [@username / reply / текст]` — Признаться в любви.
+- `.iloveyou` — Анимированное признание в любви с сердечками.
 - `.sleep [@username / reply / текст]` — Уложить спать.
 - `.massage [@username / reply / текст]` — Сделать массаж.
 - `.poke [@username / reply / текст]` — Потыкать пальцем.

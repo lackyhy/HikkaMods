@@ -1,5 +1,6 @@
 # meta developer: @lackyhyyy666
 
+import asyncio
 import html
 import logging
 import re
@@ -829,6 +830,31 @@ class KissMod(loader.Module):
         await self._send_solo_action(message, "🐈‍⬛", "помяукал(а)")
 
     @loader.command(
+        ru_doc="— Анимированное признание в любви с сердечками",
+        en_doc="— Animated love confession with hearts",
+    )
+    async def iloveyoucmd(self, message: Message):
+        """— Animated love confession with hearts"""
+        frames = [
+            "❤️",
+            "❤️❤️❤️",
+            "❤️❤️❤️❤️❤️",
+            "❤️❤️❤️❤️❤️❤️",
+            "❤️❤️❤️❤️❤️❤️\n❤️⠀⠀⠀⠀❤️\n❤️⠀⠀⠀⠀❤️\n❤️⠀⠀⠀⠀❤️\n❤️❤️❤️❤️❤️❤️",
+            "🤍🤍🤍🤍🤍🤍\n🤍 ай⠀⠀⠀🤍\n🤍⠀⠀⠀⠀🤍\n🤍⠀⠀⠀⠀🤍\n🤍🤍🤍🤍🤍🤍",
+            "🤍🤍🤍🤍🤍🤍\n🤍 ай ладно...🤍\n🤍⠀⠀⠀⠀🤍\n🤍⠀⠀⠀⠀🤍\n🤍🤍🤍🤍🤍🤍",
+            "🤍🤍🤍🤍🤍🤍\n🤍 ай ладно...🤍\n🤍 ты мне ⠀🤍🤍\n🤍⠀⠀⠀⠀🤍\n🤍🤍🤍🤍🤍🤍",
+            "🤍🤍🤍🤍🤍🤍\n🤍 ай ладно...🤍\n🤍 ты мне ⠀🤍🤍\n🤍 нравишься 🤍\n🤍🤍🤍🤍🤍🤍",
+        ]
+
+        for frame in frames:
+            try:
+                await utils.answer(message, frame)
+            except Exception:
+                pass
+            await asyncio.sleep(0.3)
+
+    @loader.command(
         ru_doc="Показать шпаргалку RP-команд",
         en_doc="Show cheat sheet of RP commands",
     )
@@ -861,6 +887,7 @@ class KissMod(loader.Module):
             "☕ <code>.tea</code> — налить чаю\n"
             "☕️ <code>.coffee</code> — налить кофе\n"
             "❤️ <code>.love</code> — признаться в любви\n"
+            "🤍 <code>.iloveyou</code> — анимированное признание в любви\n"
             "💤 <code>.sleep</code> — уложить спать\n"
             "💆 <code>.massage</code> — сделать массаж\n\n"
             "<b>😏 Игривые и флирт:</b>\n"
