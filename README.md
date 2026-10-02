@@ -366,3 +366,23 @@
 - `.bird` — Отправить фото птички.
 
 </details>
+
+---
+
+### 📡 16. HttpStatusCodes (`http.py`)
+
+**Описание:** Справочник HTTP-кодов статусов прямо в Telegram. Включает все стандартные коды IANA, а также серверные коды Nginx (444, 497, 499) и Cloudflare (520–525).
+
+#### 📥 Команда установки:
+
+```text
+.dlm https://raw.githubusercontent.com/lackyhy/HikkaMods/main/http.py
+```
+
+<details>
+<summary>📋 Список команд (нажмите, чтобы развернуть)</summary>
+
+- `.httpsc [код]` — Показать описание конкретного HTTP-кода (например `.httpsc 404`).
+- `.httpscs` — Показать полный справочник всех HTTP-кодов.
+
+</details>
