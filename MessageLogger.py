@@ -340,10 +340,9 @@ class DeletedLoggerMod(loader.Module):
                 msg = self._cache.pop(key, None)
             else:
                 # Если chat_id пустой (часто бывает при удалении в ЛС)
-                for (c_id, m_id), cached_msg in list(self._cache.items()):
+                for c_id, m_id in self._cache:
                     if m_id == msg_id:
-                        msg = cached_msg
-                        self._cache.pop((c_id, m_id), None)
+                        msg = self._cache.pop((c_id, m_id), None)
                         break
 
             if not msg:
