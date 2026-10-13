@@ -10,7 +10,7 @@ class HTTPStatusMod(loader.Module):
     strings = {
         "name": "HttpStatusCodes",
         "not_found": "❌ <b>Код <code>{}</code> не найден в справочнике.</b>",
-        "usage": "❌ <b>Укажите HTTP-код, например:</b> <code>.httpsc 404</code>",
+        "usage": "❌ <b>Укажите HTTP-код, например:</b> <code>.httpsc 404</code>, <code>.httpsc 5xx</code> или <code>.httpsc timeout</code>",
     }
 
     _codes = {
@@ -50,11 +50,11 @@ class HTTPStatusMod(loader.Module):
         403: ("🚫", "Forbidden", "Доступ запрещён — бан / нехватка прав"),
         404: ("🚫", "Not Found", "Не найдено"),
         405: ("🚫", "Method Not Allowed", "Метод запрещён"),
-        406: ("🚫", "Not Acceptable", "Метод недоступен"),
+        406: ("🚫", "Not Acceptable", "Нет ответа в формате, указанном в заголовках Accept"),
         407: ("🚫", "Proxy Authentication Required", "Не хватает авторизации прокси"),
         408: ("🚫", "Request Timeout", "Время ожидания истекло"),
         409: ("🚫", "Conflict", "Конфликт запросов"),
-        410: ("🚫", "Gone", "Адрес не существует и был перемещён"),
+        410: ("🚫", "Gone", "Ресурс удалён навсегда и больше не будет доступен"),
         411: ("🚫", "Length Required", "Требуется указание длины контента запроса"),
         412: ("🚫", "Precondition Failed", "Предусловие в хедерах неверно"),
         413: ("🚫", "Payload Too Large", "Запрос слишком большой"),
@@ -92,8 +92,11 @@ class HTTPStatusMod(loader.Module):
         520: ("💢", "Web Server Returned an Unknown Error", "Сервер вернул непредвиденный или пустой ответ (Cloudflare)"),
         521: ("💢", "Web Server Is Down", "Исходный веб-сервер отключён или сбросил соединение (Cloudflare)"),
         522: ("💢", "Connection Timed Out", "Таймаут TCP-соединения между Cloudflare и сервером"),
+        523: ("💢", "Origin Is Unreachable", "Cloudflare не может достучаться до исходного сервера (DNS/маршрут)"),
         524: ("💢", "A Timeout Occurred", "Соединение установлено, но сервер слишком долго генерирует ответ (Cloudflare)"),
         525: ("💢", "SSL Handshake Failed", "Сбой рукопожатия SSL между Cloudflare и сервером"),
+        526: ("💢", "Invalid SSL Certificate", "Cloudflare не смог проверить SSL-сертификат исходного сервера"),
+        530: ("💢", "Origin DNS Error", "Ошибка Cloudflare (обычно вместе с кодом 1xxx: DNS/доступ к origin)"),
     }
 
     _categories = {
@@ -108,39 +111,50 @@ class HTTPStatusMod(loader.Module):
         emoji, name, desc = self._codes[code]
         return f"{emoji} <code>{code}</code> <b>{name}</b>\n     └ {desc}"
 
+    def _format_category(self, digit: int) -> str:
+        title = self._categories.get(f"{digit}xx")
+        codes = sorted(c for c in self._codes if c // 100 == digit)
+        if not title or not codes:
+            return ""
+        lines = [f"<b>━━━ {title} ━━━</b>"]
+        for code in codes:
+            emoji, name, desc = self._codes[code]
+            lines.append(f"{emoji} <code>{code}</code> <b>{name}</b> — {desc}")
+        return "\n".join(lines)
+
     async def httpsccmd(self, message):
-        """<код> — Показать описание HTTP-кода"""
+        """<код / 4xx / название> — Показать описание HTTP-кода"""
         args = utils.get_args_raw(message).strip()
         if not args:
             await utils.answer(message, self.strings("usage"))
             return
 
-        if not args.isdigit():
-            await utils.answer(message, self.strings("usage"))
+        # Категория целиком: .httpsc 4xx
+        if len(args) == 3 and args[0].isdigit() and args[1:].lower() == "xx":
+            section = self._format_category(int(args[0]))
+            if section:
+                await utils.answer(message, section)
+            else:
+                await utils.answer(message, self.strings("not_found").format(utils.escape_html(args)))
             return
 
-        code = int(args)
-        if code not in self._codes:
-            await utils.answer(message, self.strings("not_found").format(code))
+        if args.isdigit():
+            code = int(args)
+            if code not in self._codes:
+                await utils.answer(message, self.strings("not_found").format(code))
+                return
+            await utils.answer(message, self._format_code(code))
             return
 
-        await utils.answer(message, self._format_code(code))
+        # Поиск по названию: .httpsc teapot / .httpsc timeout
+        query = args.lower()
+        found = sorted(c for c, (_, name, desc) in self._codes.items() if query in name.lower() or query in desc.lower())
+        if not found:
+            await utils.answer(message, self.strings("not_found").format(utils.escape_html(args)))
+            return
+        await utils.answer(message, "\n\n".join(self._format_code(c) for c in found[:15]))
 
     async def httpscscmd(self, message):
         """Показать полный список HTTP-кодов"""
-        sections = []
-
-        for prefix, title in self._categories.items():
-            digit = int(prefix[0])
-            codes = sorted(c for c in self._codes if c // 100 == digit)
-            if not codes:
-                continue
-
-            lines = [f"<b>━━━ {title} ━━━</b>"]
-            for code in codes:
-                emoji, name, desc = self._codes[code]
-                lines.append(f"{emoji} <code>{code}</code> <b>{name}</b> — {desc}")
-            sections.append("\n".join(lines))
-
-        header = ""
-        await utils.answer(message, header + "\n\n".join(sections))
+        sections = [s for s in (self._format_category(d) for d in range(1, 6)) if s]
+        await utils.answer(message, "\n\n".join(sections))

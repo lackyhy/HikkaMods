@@ -1,7 +1,9 @@
 # meta developer: @lackyhyyy666
 # scope: hikka_only
 # scope: hikka_min 1.6.2
+# requires: qrcode pillow
 
+import asyncio
 import html
 import io
 import logging
@@ -24,15 +26,9 @@ class UtilsMod(loader.Module):
     }
 
     def _generate_styled_qr(self, text: str, target_size: int = 600) -> bytes:
-        try:
-            import qrcode
-            from PIL import Image, ImageDraw
-        except ImportError:
-            import subprocess
-            import sys
-            subprocess.run([sys.executable, "-m", "pip", "install", "Pillow", "qrcode"], check=True)
-            import qrcode
-            from PIL import Image, ImageDraw
+        # Зависимости ставит Hikka по строке "# requires" — без pip внутри event loop
+        import qrcode
+        from PIL import Image, ImageDraw
 
         qr = qrcode.QRCode(
             version=None,
@@ -45,8 +41,10 @@ class UtilsMod(loader.Module):
         matrix = qr.get_matrix()
         N = len(matrix)
 
-        scale = 4
-        module_size = 24 * scale
+        # Рисуем с ~4x суперсэмплингом относительно итогового размера, но не больше
+        # ~2400px: раньше модуль был 96px, и для длинного текста (177 модулей)
+        # картинка занимала >1 ГБ памяти.
+        module_size = max(8, min(96, (target_size * 4) // (N + 8)))
         padding = 4 * module_size
         grid_size = N * module_size
         img_size = grid_size + 2 * padding
@@ -107,7 +105,8 @@ class UtilsMod(loader.Module):
         final_card = Image.new("RGBA", (img_size, img_size), (0, 0, 0, 0))
         final_card.paste(img, (0, 0), mask)
 
-        final_img = final_card.resize((target_size, target_size), Image.Resampling.LANCZOS)
+        resample = getattr(Image, "Resampling", Image).LANCZOS
+        final_img = final_card.resize((target_size, target_size), resample)
 
         bio = io.BytesIO()
         final_img.save(bio, format="PNG")
@@ -136,17 +135,24 @@ class UtilsMod(loader.Module):
             )
             return
 
+        if len(target_text.encode("utf-8")) > 2900:
+            await utils.answer(message, "<b>❌ Слишком длинный текст для QR-кода (максимум ~2900 байт).</b>")
+            return
+
         status_msg = await utils.answer(message, "📱 <b>Генерирую QR-код...</b>")
 
         qr_bytes = None
         try:
-            qr_bytes = self._generate_styled_qr(target_text)
+            # Генерация тяжёлая — выносим из event loop, чтобы юзербот не зависал
+            qr_bytes = await asyncio.get_running_loop().run_in_executor(
+                None, self._generate_styled_qr, target_text
+            )
         except Exception as e:
             logger.error(f"[Utils/QRCode] Custom QR error: {e}")
             try:
                 api_url = f"https://api.qrserver.com/v1/create-qr-code/?data={quote(target_text)}&size=500x500&format=png&color=7B1FA2"
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(api_url, timeout=10) as resp:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                    async with session.get(api_url) as resp:
                         if resp.status == 200:
                             qr_bytes = await resp.read()
             except Exception as api_err:
@@ -207,7 +213,7 @@ class UtilsMod(loader.Module):
         try:
             me = await message.client.get_me()
             out += f"👤 <b>Мой ID:</b> <code>{me.id}</code>\n"
-        except:
+        except Exception:
             pass
 
         chat_id = utils.get_chat_id(message)
@@ -223,7 +229,9 @@ class UtilsMod(loader.Module):
         target_entity = None
         if args:
             try:
-                target_entity = await message.client.get_entity(args)
+                # Числовой ID строкой Telethon воспринимает как номер телефона
+                lookup = int(args) if args.lstrip("-").isdigit() else args
+                target_entity = await message.client.get_entity(lookup)
             except Exception as e:
                 out += f"❌ <b>Ошибка поиска:</b> <code>{html.escape(str(e))}</code>\n"
         elif reply:

@@ -1,7 +1,9 @@
 # meta developer: @lackyhyyy666
+# requires: beautifulsoup4
 
 import re
 import asyncio
+from collections import OrderedDict
 import unicodedata
 import urllib.parse
 import aiohttp
@@ -130,6 +132,15 @@ def prepare_search_queries(raw_query: str) -> list:
     return result
 
 
+def match_score(query: str, candidate: str) -> float:
+    """Доля слов запроса, найденных в «исполнитель + название» кандидата"""
+    q_words = set(re.findall(r"\w+", query.lower()))
+    c_words = set(re.findall(r"\w+", candidate.lower()))
+    if not q_words:
+        return 0.0
+    return len(q_words & c_words) / len(q_words)
+
+
 @loader.tds
 class TrackLyricsMod(loader.Module):
     """Модуль для поиска и нормализации текстов песен с различных платформ"""
@@ -152,8 +163,29 @@ class TrackLyricsMod(loader.Module):
     }
 
     def __init__(self):
-        super().__init__()
-        self._processed_ids = set()
+        self.config = loader.ModuleConfig(
+            loader.ConfigValue(
+                "allowed_users",
+                [],
+                "ID пользователей, которым разрешено вызывать .ttx (владельцу можно всегда). * — всем",
+                validator=loader.validators.Series(loader.validators.String()),
+            ),
+        )
+        self._processed_ids = OrderedDict()
+
+    def _is_allowed(self, message) -> bool:
+        if getattr(message, "out", False):
+            return True
+        sender_id = getattr(message, "sender_id", None)
+        if not sender_id:
+            return False
+        if sender_id == getattr(self, "tg_id", None):
+            return True
+        allowed = {str(x).strip().lstrip("@").lower() for x in (self.config["allowed_users"] or [])}
+        if "*" in allowed or str(sender_id) in allowed:
+            return True
+        username = getattr(getattr(message, "sender", None), "username", None)
+        return bool(username) and username.lower() in allowed
 
     def _extract_track_from_single_msg(self, target_msg) -> str:
         """Извлекает название РОВНО ОДНОГО трека из конкретного сообщения."""
@@ -212,19 +244,28 @@ class TrackLyricsMod(loader.Module):
         q = self._extract_track_from_single_msg(target_msg)
         return [q] if q else []
 
-    @loader.watcher()
+    def _msg_key(self, message):
+        # ID сообщения уникален только внутри чата — ключ должен включать chat_id
+        return (getattr(message, "chat_id", None), getattr(message, "id", None))
+
+    @loader.watcher(only_messages=True)
     async def watcher(self, message):
-        """Отслеживает команду .ttx во всех сообщениях и комментариях канала"""
-        msg_id = getattr(message, "id", None)
-        if msg_id and msg_id in self._processed_ids:
+        """Отслеживает .ttx от разрешённых пользователей (в т.ч. в комментариях канала)"""
+        if getattr(message, "out", False):
+            # Свои команды обрабатывает сам ttxcmd
             return
 
-        text = (getattr(message, "raw_text", None) or getattr(message, "text", "") or "").strip()
-        if not text or not (text.startswith(".ttx") or text.startswith("!ttx") or text.lower().startswith("ttx")):
+        text = (getattr(message, "raw_text", None) or "").strip()
+        prefix = self.get_prefix()
+        if not text.lower().startswith(f"{prefix}ttx"):
             return
+        rest = text[len(prefix) + 3:]
+        if rest and not rest[0].isspace():
+            return  # например ".ttxfoo" — не наша команда
 
-        # Пропускаем свои же служебные/результативные сообщения
-        if "🎙 <b>Текст песни:</b>" in text or "🔍 <b>Ищу текст песни...</b>" in text or "⚠️ <b>Не удалось" in text or "❌ <b>Текст для трека" in text:
+        # Раньше на .ttx реагировал любой человек в любом чате, и юзербот
+        # отвечал от вашего аккаунта — теперь только разрешённые
+        if not self._is_allowed(message):
             return
 
         await self._process_ttx(message)
@@ -238,20 +279,14 @@ class TrackLyricsMod(loader.Module):
         await self._process_ttx(message)
 
     async def _process_ttx(self, message):
-        msg_id = getattr(message, "id", None)
-        if msg_id:
-            if msg_id in self._processed_ids:
-                return
-            self._processed_ids.add(msg_id)
-            if len(self._processed_ids) > 500:
-                self._processed_ids.clear()
+        key = self._msg_key(message)
+        if key in self._processed_ids:
+            return
+        self._processed_ids[key] = True
+        while len(self._processed_ids) > 500:
+            self._processed_ids.popitem(last=False)
 
-        text_msg = getattr(message, "raw_text", None) or getattr(message, "text", "") or ""
-        args = ""
-        if text_msg:
-            args = re.sub(r'^[.!]?ttx\s*', '', text_msg, flags=re.IGNORECASE).strip()
-        if not args:
-            args = utils.get_args_raw(message).strip()
+        args = utils.get_args_raw(message).strip()
 
         track_queries = []
         seen_queries = set()
@@ -288,7 +323,9 @@ class TrackLyricsMod(loader.Module):
                 gid = getattr(target, "grouped_id", None)
                 if gid:
                     try:
-                        async for m in message.client.iter_messages(message.chat_id, limit=20):
+                        # Альбом — до 10 соседних сообщений вокруг поста, а не 20 последних в чате
+                        album_ids = list(range(max(1, target.id - 10), target.id + 11))
+                        for m in await message.client.get_messages(target.chat_id, ids=album_ids):
                             if m and getattr(m, "grouped_id", None) == gid and m.id != target.id:
                                 candidates.append(m)
                     except Exception:
@@ -335,7 +372,9 @@ class TrackLyricsMod(loader.Module):
                 if len(normalized_lyrics) > 3700:
                     normalized_lyrics = normalized_lyrics[:3700] + "\n\n[Текст сокращен из-за лимита Telegram...]"
 
-                formatted_res = self.strings("lyrics_template").format(clean_query, normalized_lyrics)
+                formatted_res = self.strings("lyrics_template").format(
+                    utils.escape_html(clean_query), utils.escape_html(normalized_lyrics)
+                )
 
                 if not sent_first:
                     await utils.answer(message, formatted_res)
@@ -348,12 +387,12 @@ class TrackLyricsMod(loader.Module):
                     )
 
         if not found_any:
-            await utils.answer(message, self.strings("not_found").format(track_queries[0]))
+            await utils.answer(message, self.strings("not_found").format(utils.escape_html(track_queries[0])))
 
     async def _scrape_genius(self, session, song_url: str) -> str:
         """Скрапит текст песни с сайта Genius."""
         try:
-            async with session.get(song_url, timeout=6) as resp:
+            async with session.get(song_url, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, "html.parser")
@@ -378,7 +417,7 @@ class TrackLyricsMod(loader.Module):
     async def _scrape_azlyrics(self, session, url: str) -> str:
         """Скрапит текст песни с сайта AZLyrics."""
         try:
-            async with session.get(url, timeout=6) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, "html.parser")
@@ -397,7 +436,7 @@ class TrackLyricsMod(loader.Module):
     async def _scrape_text_pesni(self, session, url: str) -> str:
         """Скрапит текст песни с русскоязычного портала Text-pesni."""
         try:
-            async with session.get(url, timeout=6) as resp:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=6)) as resp:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, "html.parser")
@@ -418,26 +457,23 @@ class TrackLyricsMod(loader.Module):
         async def try_lrclib():
             try:
                 url = f"https://lrclib.net/api/search?q={urllib.parse.quote(q)}"
-                async with session.get(url, timeout=4) as resp:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                     if resp.status == 200:
-                        data = await resp.json()
+                        data = await resp.json(content_type=None)
                         if data and isinstance(data, list):
-                            for item in data:
+                            # Берём лучшее совпадение по исполнителю и названию,
+                            # а не первый попавшийся трек с похожим словом
+                            ranked = sorted(
+                                (item for item in data if item.get("plainLyrics") or item.get("syncedLyrics")),
+                                key=lambda item: match_score(
+                                    q, f"{item.get('artistName', '')} {item.get('trackName', '')}"
+                                ),
+                                reverse=True,
+                            )
+                            if ranked:
+                                item = ranked[0]
                                 lyrics = item.get("plainLyrics") or item.get("syncedLyrics")
-                                if lyrics:
-                                    return re.sub(r'\[\d+:\d+\.\d+\]', '', lyrics).strip()
-            except Exception:
-                pass
-            return ""
-
-        async def try_lyrist():
-            try:
-                url = f"https://lyrist.vercel.app/api/{urllib.parse.quote(q)}"
-                async with session.get(url, timeout=4) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data and data.get("lyrics"):
-                            return data["lyrics"].strip()
+                                return re.sub(r'\[\d+:\d+\.\d+\]', '', lyrics).strip()
             except Exception:
                 pass
             return ""
@@ -445,33 +481,25 @@ class TrackLyricsMod(loader.Module):
         async def try_genius():
             try:
                 search_url = f"https://genius.com/api/search/song?q={urllib.parse.quote(q)}"
-                async with session.get(search_url, timeout=4) as resp:
+                async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                     if resp.status == 200:
-                        data = await resp.json()
-                        hits = data.get("response", {}).get("hits", [])
-                        if hits:
-                            song_url = hits[0]["result"]["url"]
-                            return await self._scrape_genius(session, song_url)
-            except Exception:
-                pass
-            return ""
-
-        async def try_musixmatch():
-            try:
-                mxm_url = f"https://apic-desktop.musixmatch.com/ws/1.1/macro.community.lyrics.get?app_id=community-app-v1.0&q={urllib.parse.quote(q)}"
-                async with session.get(mxm_url, timeout=4) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        body = data.get("message", {}).get("body", {}).get("macro_calls", {})
-                        lyrics_data = body.get("track.lyrics.get", {}).get("message", {}).get("body", {}).get("lyrics", {})
-                        if lyrics_data and lyrics_data.get("lyrics_body"):
-                            return lyrics_data["lyrics_body"].strip()
+                        data = await resp.json(content_type=None)
+                        response = data.get("response", {})
+                        # Результаты лежат в response.sections[].hits (раньше код искал
+                        # response.hits, которого нет, и Genius не срабатывал никогда)
+                        hits = list(response.get("hits", []))
+                        for section in response.get("sections", []):
+                            hits.extend(section.get("hits", []))
+                        songs = [h["result"] for h in hits if h.get("type") == "song" and h.get("result", {}).get("url")]
+                        if songs:
+                            best = max(songs, key=lambda r: match_score(q, r.get("full_title", "")))
+                            return await self._scrape_genius(session, best["url"])
             except Exception:
                 pass
             return ""
 
         # Запускаем все провайдеры параллельно
-        results = await asyncio.gather(try_lrclib(), try_lyrist(), try_genius(), try_musixmatch(), return_exceptions=True)
+        results = await asyncio.gather(try_lrclib(), try_genius(), return_exceptions=True)
         for res in results:
             if isinstance(res, str) and res.strip():
                 return res.strip()
@@ -479,7 +507,7 @@ class TrackLyricsMod(loader.Module):
         # Фолбэк-поиск в DuckDuckGo если быстрые API не вернули результата
         try:
             ddg_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(q + ' текст песни lyrics')}"
-            async with session.get(ddg_url, timeout=4) as resp:
+            async with session.get(ddg_url, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, "html.parser")

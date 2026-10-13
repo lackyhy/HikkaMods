@@ -1,4 +1,7 @@
 # meta developer: @lackyhyyy666
+# requires: pycountry
+
+import gettext
 
 import pycountry
 from .. import loader, utils
@@ -89,81 +92,106 @@ def country_code_to_flag(code: str) -> str:
     return chr(ord(code[0]) + 127397) + chr(ord(code[1]) + 127397)
 
 
+def _load_ru_translation():
+    try:
+        return gettext.translation("iso3166-1", pycountry.LOCALES_DIR, languages=["ru"])
+    except Exception:
+        return None
+
+
+_RU = _load_ru_translation()
+
+
+def ru_name(country) -> str:
+    """Русское название страны (через переводы pycountry), иначе английское"""
+    name = getattr(country, "common_name", None) or country.name
+    if _RU:
+        return _RU.gettext(name)
+    return name
+
+
+def _build_ru_index() -> dict:
+    """Индекс русских названий всех стран → alpha_2 (раньше по-русски находились только ~40 стран)"""
+    index = {}
+    if not _RU:
+        return index
+    for country in pycountry.countries:
+        for attr in ("name", "common_name", "official_name"):
+            value = getattr(country, attr, None)
+            if value:
+                index.setdefault(_RU.gettext(value).lower().replace("ё", "е"), country.alpha_2)
+    return index
+
+
+RU_INDEX = _build_ru_index()
+
+
+def find_country_code(query: str):
+    query = query.strip().lower()
+    if not query:
+        return None
+
+    if query in COUNTRY_ALIASES:
+        return COUNTRY_ALIASES[query]
+
+    normalized = query.replace("ё", "е")
+    if normalized in RU_INDEX:
+        return RU_INDEX[normalized]
+
+    if query.isalpha() and len(query) in (2, 3):
+        key = "alpha_2" if len(query) == 2 else "alpha_3"
+        country = pycountry.countries.get(**{key: query.upper()})
+        if country:
+            return country.alpha_2
+
+    # Частичное совпадение по русскому названию ("корея" → "Южная Корея")
+    if len(normalized) >= 4:
+        for name, code in RU_INDEX.items():
+            if normalized in name:
+                return code
+
+    try:
+        matches = pycountry.countries.search_fuzzy(query)
+        if matches:
+            return getattr(matches[0], "alpha_2", None)
+    except Exception:
+        pass
+    return None
+
+
 @loader.tds
 class FlagsMod(loader.Module):
     """Модуль для получения флагов стран в формате эмодзи."""
 
     strings = {
         "name": "Flags",
-        "no_arg": "<emoji document_id=5210952531676504517>⚠️</emoji> <b>Укажите страну или код (например, <code>.flag ru</code> или <code>.flag россия</code>)</b>",
-        "not_found": "<emoji document_id=5210952531676504517>❌</emoji> <b>Страна не найдена:</b> <code>{}</code>",
-        "flag_out": "<b>Страна:</b> {} ({})\n<b>Флаг:</b> <code>{}</code>",
-    }
-
-    strings_ru = {
-        "no_arg": "<emoji document_id=5210952531676504517>⚠️</emoji> <b>Укажите страну или код (например, <code>.flag ru</code> или <code>.flag россия</code>)</b>",
-        "not_found": "<emoji document_id=5210952531676504517>❌</emoji> <b>Страна не найдена:</b> <code>{}</code>",
-        "flag_out": "<b>Страна:</b> {} ({})\n<b>Флаг:</b> <code>{}</code>",
+        "no_arg": "⚠️ <b>Укажите страну или код (например, <code>.flag ru</code>, <code>.flag германия</code> или <code>.flag ru, ua, kz</code>)</b>",
+        "not_found": "❌ <b>Страна не найдена:</b> <code>{}</code>",
+        "flag_out": "{} <b>{}</b> ({}) — <code>{}</code>",
     }
 
     @loader.command(
-        ru_doc="[страна/код] - Показывает флаг указанной страны (эмодзи в моноширинном тексте для удобного копирования)",
-        en_doc="[country/code] - Shows the flag of the specified country (emoji formatted for easy copying)",
+        ru_doc="[страна/код, ...] - Показывает флаг страны (можно несколько через запятую) для удобного копирования",
+        en_doc="[country/code, ...] - Shows the flag of the specified country (comma-separated list supported)",
     )
     async def flagcmd(self, message):
-        """[country/code] - Shows the flag of the specified country"""
+        """[country/code, ...] - Shows the flag of the specified country"""
         args = utils.get_args_raw(message).strip()
         if not args:
             await utils.answer(message, self.strings("no_arg"))
             return
 
-        query = args.lower()
-        code = None
-        country_name = None
+        queries = [q.strip() for q in args.split(",") if q.strip()] if "," in args else [args]
+        lines = []
+        for query in queries[:30]:
+            code = find_country_code(query)
+            flag_emoji = country_code_to_flag(code) if code else ""
+            if not flag_emoji:
+                lines.append(self.strings("not_found").format(utils.escape_html(query)))
+                continue
 
-        # 1. Проверяем точные совпадения в словаре русских названий/алиасов
-        if query in COUNTRY_ALIASES:
-            code = COUNTRY_ALIASES[query]
-
-        # 2. Если введен 2-буквенный или 3-буквенный ISO код прямо
-        if not code and query.isalpha():
-            if len(query) == 2:
-                country = pycountry.countries.get(alpha_2=query.upper())
-                if country:
-                    code = country.alpha_2
-                    country_name = getattr(country, "name", code)
-            elif len(query) == 3:
-                country = pycountry.countries.get(alpha_3=query.upper())
-                if country:
-                    code = country.alpha_2
-                    country_name = getattr(country, "name", code)
-
-        # 3. Пробуем нечеткий поиск через pycountry (для названий на английском)
-        if not code:
-            try:
-                matches = pycountry.countries.search_fuzzy(query)
-                if matches:
-                    country = matches[0]
-                    code = getattr(country, "alpha_2", None)
-                    country_name = getattr(country, "name", code)
-            except Exception:
-                pass
-
-        if not code:
-            await utils.answer(message, self.strings("not_found").format(args))
-            return
-
-        flag_emoji = country_code_to_flag(code)
-        if not flag_emoji:
-            await utils.answer(message, self.strings("not_found").format(args))
-            return
-
-        if not country_name:
             country = pycountry.countries.get(alpha_2=code)
-            country_name = getattr(country, "name", code) if country else code
+            name = ru_name(country) if country else code
+            lines.append(self.strings("flag_out").format(flag_emoji, utils.escape_html(name), code, flag_emoji))
 
-        await utils.answer(
-            message,
-            self.strings("flag_out").format(country_name, code, flag_emoji)
-        )
-
+        await utils.answer(message, "\n".join(lines))

@@ -7,6 +7,8 @@ import html
 import logging
 import re
 from telethon import types
+from telethon.errors import FloodWaitError
+from telethon.extensions import html as telethon_html
 from .. import loader, utils
 
 logger = logging.getLogger(__name__)
@@ -85,7 +87,7 @@ class SmartBroadcastMod(loader.Module):
                 "delay",
                 1.0,
                 lambda: self.strings("config_delay"),
-                validator=loader.validators.String(),
+                validator=loader.validators.Float(minimum=0.1, maximum=60),
             ),
             loader.ConfigValue(
                 "announcement_prefix",
@@ -323,6 +325,37 @@ class SmartBroadcastMod(loader.Module):
         with_ping = (cmd_name == "sba")
         await self._process_broadcast(message, with_ping=with_ping)
 
+    @staticmethod
+    def _message_html(msg) -> str:
+        raw = getattr(msg, "message", "") or ""
+        entities = getattr(msg, "entities", None)
+        if raw and entities:
+            try:
+                return telethon_html.unparse(raw, entities)
+            except Exception:
+                pass
+        return html.escape(raw)
+
+    def _args_html(self, message) -> str:
+        try:
+            res = utils.get_args_html(message)
+            if res:
+                return res.strip()
+        except Exception:
+            pass
+        return html.escape(utils.get_args_raw(message).strip())
+
+    async def _send_with_flood_retry(self, coro_factory):
+        """Повторяет отправку один раз после FloodWait, вместо того чтобы терять пачку"""
+        try:
+            return await coro_factory()
+        except FloodWaitError as e:
+            if e.seconds > 120:
+                raise
+            logger.warning(f"[SmartBroadcast] FloodWait {e.seconds}s, ждём и повторяем")
+            await asyncio.sleep(e.seconds + 1)
+            return await coro_factory()
+
     async def _process_broadcast(self, message: types.Message, with_ping: bool):
         args = utils.get_args_raw(message).strip()
         reply = await message.get_reply_message() if message.is_reply else None
@@ -330,12 +363,14 @@ class SmartBroadcastMod(loader.Module):
         text = ""
         media = None
 
+        # Текст отправляется с parse_mode="html", поэтому берём его уже в HTML:
+        # форматирование сохраняется, а символы вроде "<" больше не ломают отправку
         if args:
-            text = args
+            text = self._args_html(message)
             if reply and reply.media:
                 media = reply.media
         elif reply:
-            text = reply.raw_text or reply.text or ""
+            text = self._message_html(reply)
             if reply.media:
                 media = reply.media
 
@@ -435,21 +470,25 @@ class SmartBroadcastMod(loader.Module):
 
                 pings_str = ", ".join(mentions)
                 full_text = f"{pings_str}\n\n{formatted_announcement}"
+                chat_id = message.chat_id
 
                 try:
                     if index == 0 and media:
-                        await self._client.send_file(
-                            message.chat_id,
-                            media,
-                            caption=full_text,
-                            parse_mode="html"
-                        )
+                        if len(utils.remove_html(full_text)) <= 1024:
+                            await self._send_with_flood_retry(lambda: self._client.send_file(
+                                chat_id, media, caption=full_text, parse_mode="html"
+                            ))
+                        else:
+                            # Подпись к медиа ограничена 1024 символами — медиа шлём
+                            # отдельно, пинги с текстом следующим сообщением
+                            await self._send_with_flood_retry(lambda: self._client.send_file(chat_id, media))
+                            await self._send_with_flood_retry(lambda: self._client.send_message(
+                                chat_id, full_text, parse_mode="html"
+                            ))
                     else:
-                        await self._client.send_message(
-                            message.chat_id,
-                            full_text,
-                            parse_mode="html"
-                        )
+                        await self._send_with_flood_retry(lambda: self._client.send_message(
+                            chat_id, full_text, parse_mode="html"
+                        ))
                 except Exception as e:
                     logger.error(f"[SmartBroadcast] Ошибка отправки пинга (пачка {index}): {e}")
 
@@ -465,20 +504,22 @@ class SmartBroadcastMod(loader.Module):
             await self._send_single_announcement(message, formatted_announcement, media)
 
     async def _send_single_announcement(self, message: types.Message, text: str, media=None):
+        chat_id = message.chat_id
         try:
+            if media and len(utils.remove_html(text)) > 1024:
+                await self._send_with_flood_retry(lambda: self._client.send_file(chat_id, media))
+                media = None
             if media:
-                await self._client.send_file(
-                    message.chat_id,
-                    media,
-                    caption=text,
-                    parse_mode="html"
-                )
+                await self._send_with_flood_retry(lambda: self._client.send_file(
+                    chat_id, media, caption=text, parse_mode="html"
+                ))
             else:
-                await self._client.send_message(
-                    message.chat_id,
-                    text,
-                    parse_mode="html"
-                )
+                await self._send_with_flood_retry(lambda: self._client.send_message(
+                    chat_id, text, parse_mode="html"
+                ))
         except Exception as e:
             logger.error(f"[SmartBroadcast] Ошибка отправки объявления: {e}")
-            await utils.answer(message, text)
+            try:
+                await self._client.send_message(chat_id, f"❌ <b>Не удалось отправить объявление:</b> <code>{html.escape(str(e))}</code>")
+            except Exception:
+                pass

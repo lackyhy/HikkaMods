@@ -642,6 +642,14 @@ class KissMod(loader.Module):
             return res
         return verb
 
+    async def _resolve_entity(self, message: Message, arg: str):
+        """@username / ссылка t.me / числовой ID → entity.
+        Числовой ID строкой Telethon трактует как номер телефона, поэтому приводим к int."""
+        arg = re.sub(r"^(?:https?://)?t\.me/", "", arg.strip())
+        if arg.lstrip("-").isdigit():
+            return await message.client.get_entity(int(arg))
+        return await message.client.get_entity(arg)
+
     async def _get_target_and_extra(self, message: Message):
         args = utils.get_args_raw(message).strip()
         reply = await message.get_reply_message()
@@ -660,7 +668,7 @@ class KissMod(loader.Module):
                 or first_arg.startswith("https://t.me/")
             ):
                 try:
-                    target_entity = await message.client.get_entity(first_arg)
+                    target_entity = await self._resolve_entity(message, first_arg)
                     extra_text = args[len(first_arg):].strip()
                 except Exception:
                     target_entity = None
@@ -695,7 +703,7 @@ class KissMod(loader.Module):
                 or w1.startswith("https://t.me/")
             ):
                 try:
-                    target1 = await message.client.get_entity(w1)
+                    target1 = await self._resolve_entity(message, w1)
                     used += 1
                 except Exception:
                     target1 = None
@@ -709,7 +717,7 @@ class KissMod(loader.Module):
                 or w2.startswith("https://t.me/")
             ):
                 try:
-                    target2 = await message.client.get_entity(w2)
+                    target2 = await self._resolve_entity(message, w2)
                     used += 1
                 except Exception:
                     target2 = None
@@ -1292,9 +1300,15 @@ class KissMod(loader.Module):
             "🤍🤍🤍🤍🤍🤍\n🤍 ай ладно...🤍\n🤍 ты мне ⠀🤍🤍\n🤍 нравишься 🤍\n🤍🤍🤍🤍🤍🤍",
         ]
 
+        # Если команду вызвал другой пользователь, utils.answer на его сообщение
+        # каждый раз отправлял бы новый ответ (9 сообщений подряд). Отправляем
+        # один ответ и дальше редактируем уже его.
+        target = message
         for frame in frames:
             try:
-                await utils.answer(message, frame)
+                sent = await utils.answer(target, frame)
+                if not getattr(target, "out", False) and sent is not None:
+                    target = sent
             except Exception:
                 pass
             await asyncio.sleep(0.3)

@@ -1,5 +1,6 @@
 # meta developer: @lackyhyyy666
-# meta version: 1.0.2
+# meta version: 1.1.0
+# requires: yt-dlp pillow
 
 import os
 import re
@@ -18,7 +19,7 @@ ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 class YTMusicDownloaderMod(loader.Module):
     """Модуль для скачивания треков с YouTube Music и YouTube"""
 
-    __version__ = (1, 0, 2)
+    __version__ = (1, 1, 0)
 
     strings = {
         "name": "YTMusicDownloader",
@@ -40,6 +41,12 @@ class YTMusicDownloaderMod(loader.Module):
                 [],
                 "ID пользователей, которым разрешено использовать команду .dy",
                 validator=loader.validators.Series(loader.validators.Integer()),
+            ),
+            loader.ConfigValue(
+                "max_duration",
+                1200,
+                "Максимальная длительность трека в секундах (0 — без ограничений)",
+                validator=loader.validators.Integer(minimum=0),
             ),
         )
 
@@ -72,6 +79,22 @@ class YTMusicDownloaderMod(loader.Module):
                         allowed_set.add(int(sub))
 
         return sender_id in allowed_set
+
+    @loader.watcher(only_messages=True)
+    async def watcher(self, message):
+        """Позволяет пользователям из allowed_ids вызывать .dy (раньше настройка ни на что не влияла)"""
+        if getattr(message, "out", False) or not self.config["allowed_ids"]:
+            return
+        text = (getattr(message, "raw_text", "") or "").strip()
+        prefix = self.get_prefix()
+        if not text.startswith(prefix):
+            return
+        parts = text[len(prefix):].split(maxsplit=1)
+        if not parts or parts[0].lower() != "dy":
+            return
+        owner_id = getattr(self, "tg_id", None)
+        if getattr(message, "sender_id", None) != owner_id and self._is_allowed(message):
+            await self.dycmd(message)
 
     @loader.command(
         ru_doc="[ссылка / название / реплай / в комментариях] - Скачать аудиозапись/трек с YouTube Music или YouTube",
@@ -159,17 +182,18 @@ class YTMusicDownloaderMod(loader.Module):
         if url.startswith("http") and "music.youtube.com" in url:
             url = url.replace("music.youtube.com", "www.youtube.com")
 
-        loop = asyncio.get_event_loop()
-        temp_dir = None
-        audio_path = None
-        thumb_path = None
+        loop = asyncio.get_running_loop()
+        # Папку создаём здесь, чтобы удалить её даже если скачивание упало
+        # (раньше при ошибке внутри executor временная папка оставалась навсегда)
+        temp_dir = tempfile.mkdtemp(prefix="dy_")
 
         try:
-            temp_dir, audio_path, title, performer, duration, thumb_path = await loop.run_in_executor(
-                None, self._download_audio, url
+            audio_path, title, performer, duration, thumb_path = await loop.run_in_executor(
+                None, self._download_audio, url, temp_dir, int(self.config["max_duration"] or 0)
             )
         except Exception as e:
-            raw_err = ANSI_ESCAPE.sub('', str(e))
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raw_err = utils.escape_html(ANSI_ESCAPE.sub('', str(e))[:1000])
             await utils.answer(message, self.strings("error").format(raw_err))
             return
 
@@ -185,16 +209,21 @@ class YTMusicDownloaderMod(loader.Module):
 
             valid_thumb = None
             if thumb_path and os.path.exists(thumb_path):
-                if thumb_path.lower().endswith((".jpg", ".jpeg")):
-                    valid_thumb = thumb_path
-                else:
-                    try:
-                        jpg_thumb = os.path.splitext(thumb_path)[0] + "_conv.jpg"
-                        with Image.open(thumb_path) as im:
-                            im.convert("RGB").save(jpg_thumb, "JPEG")
-                        valid_thumb = jpg_thumb
-                    except Exception:
-                        valid_thumb = None
+                # Telegram принимает обложку только JPEG до 320x320 и ~200 КБ,
+                # иначе молча её игнорирует — обрезаем по центру в квадрат
+                try:
+                    jpg_thumb = os.path.splitext(thumb_path)[0] + "_thumb.jpg"
+                    with Image.open(thumb_path) as im:
+                        im = im.convert("RGB")
+                        side = min(im.size)
+                        left = (im.width - side) // 2
+                        top = (im.height - side) // 2
+                        im = im.crop((left, top, left + side, top + side))
+                        im.thumbnail((320, 320))
+                        im.save(jpg_thumb, "JPEG", quality=85)
+                    valid_thumb = jpg_thumb
+                except Exception:
+                    valid_thumb = None
 
             # Отправляем файл
             await message.client.send_file(
@@ -214,27 +243,25 @@ class YTMusicDownloaderMod(loader.Module):
                 pass
 
         except Exception as e:
-            raw_err = ANSI_ESCAPE.sub('', str(e))
+            raw_err = utils.escape_html(ANSI_ESCAPE.sub('', str(e))[:1000])
             await utils.answer(message, self.strings("error").format(raw_err))
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def _download_audio(self, url: str):
-        temp_dir = tempfile.mkdtemp()
+    def _download_audio(self, url: str, temp_dir: str, max_duration: int = 0):
         out_template = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
         ydl_opts = {
             "format": "bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": out_template,
             "writethumbnail": True,
-            "nocheckcertificate": True,
+            "noplaylist": True,
             "cachedir": False,
             "source_address": "0.0.0.0",
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android", "web"],
-                    "client": ["android", "web"],
                 }
             },
             "http_headers": {
@@ -256,15 +283,27 @@ class YTMusicDownloaderMod(loader.Module):
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            # Сначала узнаём метаданные без скачивания — чтобы не качать часовые стримы
+            info = ydl.extract_info(url, download=False)
             if not info:
                 raise ValueError("Не удалось получить информацию о треке.")
 
             if "entries" in info:
-                entries = info.get("entries") or []
+                entries = [e for e in (info.get("entries") or []) if e]
                 if not entries:
                     raise ValueError("Не удалось найти результаты по запросу.")
                 info = entries[0]
+
+            if info.get("is_live"):
+                raise ValueError("Прямые трансляции скачивать нельзя.")
+            duration = int(info.get("duration") or 0)
+            if max_duration and duration > max_duration:
+                raise ValueError(
+                    f"Трек слишком длинный ({duration // 60} мин). "
+                    f"Лимит: {max_duration // 60} мин (.cfg YTMusicDownloader max_duration)."
+                )
+
+            info = ydl.process_ie_result(info, download=True)
 
             filename = ydl.prepare_filename(info)
             audio_path = os.path.splitext(filename)[0] + ".mp3"
@@ -286,4 +325,4 @@ class YTMusicDownloaderMod(loader.Module):
                     thumb_path = candidate
                     break
 
-            return temp_dir, audio_path, title, performer, duration, thumb_path
+            return audio_path, title, performer, duration, thumb_path

@@ -125,7 +125,7 @@ class SinfMod(loader.Module):
             if not is_ip:
                 # Проверяем, можно ли зарезолвить как домен
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = asyncio.get_running_loop()
                     addr_info = await loop.getaddrinfo(clean_host, None)
                     if addr_info:
                         is_domain = True
@@ -170,7 +170,7 @@ class SinfMod(loader.Module):
 
         if is_domain:
             try:
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 resolved_ip = await loop.run_in_executor(
                     None, lambda: socket.gethostbyname(host)
                 )
@@ -266,7 +266,7 @@ class SinfMod(loader.Module):
             "",
             "<b>📍 Геолокация:</b>",
             f"• <b>Страна:</b> {flag} {country} ({country_code})",
-            f"• <b>Регион / Город:</b> {region}, {city}".strip(", "),
+            f"• <b>Регион / Город:</b> {', '.join(x for x in (region, city) if x) or 'Н/Д'}",
             f"• <b>Почтовый индекс:</b> <code>{zip_code}</code>",
             f"• <b>Координаты:</b> <code>{lat}, {lon}</code>" + maps_links,
             "",
@@ -368,7 +368,7 @@ class SinfMod(loader.Module):
                             f"<b>📍 Найденный объект:</b>\n"
                             f"• <b>Полный адрес:</b> <code>{display_name}</code>\n"
                             f"• <b>Страна:</b> {flag} {country} ({country_code})\n"
-                            f"• <b>Регион / Город:</b> {state}, {city}".strip(", ") + "\n"
+                            f"• <b>Регион / Город:</b> {', '.join(x for x in (state, city) if x) or 'Н/Д'}\n"
                             f"• <b>Улица / Дом:</b> {street_str}\n"
                             f"• <b>Почтовый индекс:</b> <code>{postcode}</code>\n"
                             f"• <b>Тип:</b> <code>{category} ({type_name})</code>\n\n"
@@ -462,7 +462,10 @@ class SinfMod(loader.Module):
                 ) as resp:
                     if resp.status == 200:
                         res_json = await resp.json()
-                        data = res_json.get("data", {}).get(addr, {}).get("address", {})
+                        data_map = res_json.get("data", {}) or {}
+                        # Blockchair хранит EVM-адреса в нижнем регистре
+                        entry = data_map.get(addr) or data_map.get(addr.lower()) or {}
+                        data = entry.get("address", {})
                         if data:
                             bal_wei = int(data.get("balance", 0))
                             bal_eth = bal_wei / 1e18
@@ -702,7 +705,10 @@ class SinfMod(loader.Module):
         # 3. Teredo IPv6 (2001:0::/32)
         teredo = getattr(ip6, "teredo", None)
         if teredo:
-            server_ip, flags, port, client_ip = teredo
+            # ipaddress возвращает пару (server, client); порт клиента закодирован
+            # в байтах 10-11 с инверсией битов (RFC 4380)
+            server_ip, client_ip = teredo
+            port = int.from_bytes(ip6.packed[10:12], "big") ^ 0xFFFF
             extra = f"Server: {server_ip}, Port: {port}"
             return str(client_ip), "Teredo Tunneling (RFC 4380)", extra
 
@@ -717,16 +723,12 @@ class SinfMod(loader.Module):
             ipv4_bytes = bytes_ip6[12:16]
             return str(ipaddress.IPv4Address(ipv4_bytes)), "IPv4-Compatible IPv6 (RFC 4291)", None
 
-        # 6. Embedded IPv4 in last 4 bytes
-        last_4_bytes = bytes_ip6[-4:]
-        potential_ipv4 = ipaddress.IPv4Address(last_4_bytes)
-        if (
-            not potential_ipv4.is_private
-            and not potential_ipv4.is_loopback
-            and not potential_ipv4.is_unspecified
-            and not potential_ipv4.is_multicast
-        ):
-            return str(potential_ipv4), "Embedded IPv4 Address", None
+        # 6. ISATAP (::0:5efe:a.b.c.d / ::200:5efe:a.b.c.d) — RFC 5214.
+        # Произвольные «последние 4 байта» не считаем IPv4: у обычных адресов
+        # там случайный идентификатор интерфейса, а не IPv4.
+        if bytes_ip6[8:12] in (b"\x00\x00\x5e\xfe", b"\x02\x00\x5e\xfe"):
+            ipv4_bytes = bytes_ip6[12:16]
+            return str(ipaddress.IPv4Address(ipv4_bytes)), "ISATAP (RFC 5214)", None
 
         return None, "native", None
 
@@ -735,7 +737,7 @@ class SinfMod(loader.Module):
         ptr_host = None
         resolved_ipv4 = None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             name_info = await loop.getnameinfo((ip6_str, 0), 0)
             if name_info and name_info[0] and name_info[0] != ip6_str:

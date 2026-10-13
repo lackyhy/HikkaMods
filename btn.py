@@ -5,7 +5,7 @@ import html
 import re
 from urllib.parse import quote
 
-from telethon.extensions import markdown as telethon_markdown
+from telethon.extensions import html as telethon_html
 from telethon.tl.types import Message, MessageService
 from .. import loader, utils
 from ..inline.types import InlineCall
@@ -47,54 +47,35 @@ class InlineButtonsMod(loader.Module):
     }
 
     def _get_formatted_text(self, msg) -> str:
-        """Извлекает Markdown-текст сообщения с сохранением жирного/курсива/кода и кастомных эмодзи."""
+        """Извлекает HTML-текст сообщения с сохранением жирного/курсива/кода и кастомных эмодзи.
+
+        Раньше текст переводился в Markdown, а inline-форма ждёт HTML —
+        в итоге в сообщении появлялись буквальные ** и __.
+        """
         if not msg or isinstance(msg, MessageService):
             return ""
 
-        # 1. Приоритет: встроенный метод Hikka utils.md(msg)
-        try:
-            if hasattr(utils, "md"):
-                res = utils.md(msg)
-                if res:
-                    return res
-        except Exception:
-            pass
-
-        # 2. Фолбэк: телетоновский markdown unparse
-        text_raw = getattr(msg, "message", "") or getattr(msg, "text", "") or ""
+        text_raw = getattr(msg, "message", "") or ""
         entities = getattr(msg, "entities", None)
 
         if text_raw and entities:
             try:
-                return telethon_markdown.unparse(text_raw, entities)
+                return telethon_html.unparse(text_raw, entities)
             except Exception:
                 pass
 
-        if hasattr(msg, "text") and msg.text:
-            return msg.text
-        if hasattr(msg, "raw_text") and msg.raw_text:
-            return msg.raw_text
-        return text_raw
+        return html.escape(text_raw or getattr(msg, "raw_text", "") or "")
 
-    @loader.command(
-        ru_doc="[текст / реплай] [1. Кнопка - Ссылка] — Превратить текущее сообщение в инлайн-сообщение с кнопками",
-        en_doc="[text / reply] [1. Button - Link] — Turn current message into inline message with buttons",
-    )
-    async def btncmd(self, message: Message):
-        """[текст / реплай] [1. Кнопка - Ссылка] — Создать сообщение с инлайн-кнопками"""
+    async def _make_form(self, message: Message, help_key: str, fallback_title: str, require_args: bool):
         args_raw = utils.get_args_raw(message)
         reply = await message.get_reply_message()
 
-        if not args_raw and not reply:
-            await utils.answer(message, self.strings("help"))
+        if not args_raw and (require_args or not reply):
+            await utils.answer(message, self.strings(help_key))
             return
 
-        base_text = self._get_formatted_text(reply)
         parsed_text, button_rows = self._parse_buttons(args_raw)
-
-        final_text = parsed_text if parsed_text else base_text
-        if not final_text:
-            final_text = "🔘 <b>Инлайн-кнопки:</b>"
+        final_text = parsed_text or self._get_formatted_text(reply) or fallback_title
 
         if not button_rows:
             await utils.answer(message, self.strings("no_buttons"))
@@ -115,41 +96,20 @@ class InlineButtonsMod(loader.Module):
             )
 
     @loader.command(
+        ru_doc="[текст / реплай] [1. Кнопка - Ссылка] — Превратить текущее сообщение в инлайн-сообщение с кнопками",
+        en_doc="[text / reply] [1. Button - Link] — Turn current message into inline message with buttons",
+    )
+    async def btncmd(self, message: Message):
+        """[текст / реплай] [1. Кнопка - Ссылка] — Создать сообщение с инлайн-кнопками"""
+        await self._make_form(message, "help", "🔘 <b>Инлайн-кнопки:</b>", require_args=False)
+
+    @loader.command(
         ru_doc="[текст / реплай] [1. Кнопка - Ссылка] — Редактировать текущую команду в сообщение с кнопками",
         en_doc="[text / reply] [1. Button - Link] — Edit current message into button message",
     )
     async def editbtncmd(self, message: Message):
         """[текст / реплай] [1. Кнопка - Ссылка] — Отредактировать сообщение с кнопками"""
-        args_raw = utils.get_args_raw(message)
-        reply = await message.get_reply_message()
-
-        if not args_raw and not reply:
-            await utils.answer(message, self.strings("edit_help"))
-            return
-
-        base_text = self._get_formatted_text(reply)
-        parsed_text, button_rows = self._parse_buttons(args_raw)
-
-        final_text = parsed_text if parsed_text else base_text
-        if not final_text:
-            final_text = "🔘 <b>Отредактированное сообщение:</b>"
-
-        if not button_rows:
-            await utils.answer(message, self.strings("no_buttons"))
-            return
-
-        try:
-            await self.inline.form(
-                text=final_text,
-                message=message,
-                reply_markup=button_rows,
-                disable_security=True,
-            )
-        except Exception as exc:
-            await utils.answer(
-                message,
-                f"<b>⚠️ Ошибка редактирования:</b> <code>{html.escape(str(exc))}</code>",
-            )
+        await self._make_form(message, "edit_help", "🔘 <b>Отредактированное сообщение:</b>", require_args=False)
 
     @loader.command(
         ru_doc="[реплай] [1. Кнопка - Ссылка] — Добавить кнопки (отредактировав текущее сообщение)",
@@ -157,73 +117,60 @@ class InlineButtonsMod(loader.Module):
     )
     async def addbtncmd(self, message: Message):
         """[реплай] [1. Кнопка - Ссылка] — Добавить кнопки к сообщению"""
-        args_raw = utils.get_args_raw(message)
-        reply = await message.get_reply_message()
-
-        if not args_raw:
-            await utils.answer(message, self.strings("add_help"))
-            return
-
-        base_text = self._get_formatted_text(reply)
-        parsed_text, extra_button_rows = self._parse_buttons(args_raw)
-
-        final_text = parsed_text if parsed_text else base_text
-        if not final_text:
-            final_text = "🔘 <b>Сообщение с кнопками:</b>"
-
-        if not extra_button_rows:
-            await utils.answer(message, self.strings("no_buttons"))
-            return
-
-        try:
-            await self.inline.form(
-                text=final_text,
-                message=message,
-                reply_markup=extra_button_rows,
-                disable_security=True,
-            )
-        except Exception as exc:
-            await utils.answer(
-                message,
-                f"<b>⚠️ Ошибка добавления кнопок:</b> <code>{html.escape(str(exc))}</code>",
-            )
+        await self._make_form(message, "add_help", "🔘 <b>Сообщение с кнопками:</b>", require_args=True)
 
     async def _toast_callback(self, call: InlineCall, toast_text: str):
         """Обработчик всплывающих уведомлений для callback-кнопок."""
-        await call.answer(toast_text, show_alert=True)
+        await call.answer(toast_text[:200], show_alert=True)
 
     async def _close_callback(self, call: InlineCall):
-        """Удаляет инлайн-сообщение по нажатию кнопки Закрыть."""
+        """Удаляет инлайн-сообщение по нажатию кнопки Закрыть (только владелец)."""
+        # Форма создаётся с disable_security=True, чтобы всплывашки работали у всех,
+        # поэтому удаление проверяем вручную — иначе любой участник чата удалял сообщение
+        if call.from_user.id != self.tg_id:
+            await call.answer("❌ Закрыть может только автор сообщения", show_alert=True)
+            return
         await call.delete()
 
-    async def _toggle_callback(self, call: InlineCall, current_state: str):
-        """Динамическое переключение состояния кнопки в режиме реального времени."""
-        if "🟢" in current_state or "ON" in current_state.upper():
-            new_state = current_state.replace("🟢", "🔴").replace("ON", "OFF")
-            toast = "Режим выключен 🔴"
-        elif "🔴" in current_state or "OFF" in current_state.upper():
-            new_state = current_state.replace("🔴", "🟢").replace("OFF", "ON")
-            toast = "Режим включен 🟢"
-        else:
-            new_state = f"✅ {current_state}"
-            toast = f"Состояние изменено: {new_state}"
+    @staticmethod
+    def _flip_state(state: str):
+        if "🟢" in state or re.search(r"\bON\b", state, re.IGNORECASE):
+            new = state.replace("🟢", "🔴")
+            new = re.sub(r"\bON\b", "OFF", new)
+            new = re.sub(r"\bon\b", "off", new)
+            return new, "Режим выключен 🔴"
+        if "🔴" in state or re.search(r"\bOFF\b", state, re.IGNORECASE):
+            new = state.replace("🔴", "🟢")
+            new = re.sub(r"\bOFF\b", "ON", new)
+            new = re.sub(r"\boff\b", "on", new)
+            return new, "Режим включен 🟢"
+        if state.startswith("✅ "):
+            return state[2:], "Состояние сброшено"
+        return f"✅ {state}", "Состояние изменено"
 
+    async def _toggle_callback(self, call: InlineCall, current_state: str):
+        """Переключает состояние кнопки и перерисовывает клавиатуру."""
+        new_state, toast = self._flip_state(current_state)
         await call.answer(toast, show_alert=False)
 
-        if hasattr(call, "reply_markup") and call.reply_markup:
-            new_markup = []
-            for row in call.reply_markup:
-                new_row = []
-                for btn in row:
-                    if isinstance(btn, dict) and btn.get("text") == current_state:
-                        new_btn = dict(btn)
-                        new_btn["text"] = new_state
-                        new_btn["args"] = (new_state,)
-                        new_row.append(new_btn)
-                    else:
-                        new_row.append(btn)
-                new_markup.append(new_row)
-            await call.edit(reply_markup=new_markup)
+        form = getattr(call, "form", None) or {}
+        markup = form.get("buttons") or getattr(call, "reply_markup", None)
+        if not markup:
+            return
+
+        new_markup = []
+        for row in markup:
+            new_row = []
+            for btn in row:
+                if isinstance(btn, dict) and btn.get("text") == current_state:
+                    btn = dict(btn, text=new_state, args=(new_state,))
+                new_row.append(btn)
+            new_markup.append(new_row)
+
+        try:
+            await call.edit(text=form.get("text"), reply_markup=new_markup)
+        except Exception:
+            pass
 
     def _parse_buttons(self, raw_input: str):
         """Парсит текст и структуру инлайн-кнопок из строки ввода."""

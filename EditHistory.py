@@ -80,6 +80,17 @@ class EditHistoryMod(loader.Module):
             client.add_event_handler(self._on_message_event, events.MessageEdited)
             self._registered_events = True
 
+    async def on_unload(self):
+        # Без этого после .reload/переустановки старые обработчики оставались
+        # висеть в клиенте: события обрабатывались по несколько раз.
+        client = getattr(self, "_client", None)
+        if client and self._registered_events:
+            try:
+                client.remove_event_handler(self._on_message_event)
+            except Exception:
+                pass
+            self._registered_events = False
+
     def _is_allowed(self, message) -> bool:
         if getattr(message, "out", False):
             return True
@@ -263,15 +274,28 @@ class EditHistoryMod(loader.Module):
         previous_versions = history_list[:-1]
         final_version = history_list[-1]
 
-        lines = [""]
+        # Лимит сообщения Telegram — 4096 символов; делим бюджет между версиями,
+        # обрезая сырой текст до экранирования
+        total_edits = len(previous_versions)
+        shown_from = max(0, total_edits - 20)
+        previous_versions = previous_versions[shown_from:]
+        per_version = max(80, 3300 // (len(previous_versions) + 1))
 
-        for idx, entry in enumerate(previous_versions, 1):
+        def clip(text):
+            return text if len(text) <= per_version else text[: per_version - 1] + "…"
+
+        lines = [f"<b>📝 История изменений ({total_edits} правок):</b>"]
+        if shown_from:
+            lines.append(f"<i>…показаны последние {len(previous_versions)}</i>")
+
+        for idx, entry in enumerate(previous_versions, shown_from + 1):
             time_str = f"<i>[{entry['date']}]</i> " if entry.get("date") else ""
-            safe_text = html.escape(entry["text"])
+            safe_text = html.escape(clip(entry["text"]))
             lines.append(f"<b>{idx})</b> {time_str}<code>{safe_text}</code>")
 
-        final_text = html.escape(final_version["text"])
-        lines.append(f"\n<b>Итог:</b> <code>{final_text}</code>")
+        final_text = html.escape(clip(final_version["text"]))
+        final_time = f" <i>[{final_version['date']}]</i>" if final_version.get("date") else ""
+        lines.append(f"\n<b>Итог:</b>{final_time} <code>{final_text}</code>")
 
         res = "\n".join(lines)
         await utils.answer(message, res)

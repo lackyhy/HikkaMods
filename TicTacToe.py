@@ -1,7 +1,6 @@
 # meta developer: @lackyhyyy666
 # scope: inline
 
-import copy
 import enum
 from random import choice
 from typing import List
@@ -49,45 +48,45 @@ class AbBot:
     def alpha_beta_search(self, board, is_max, current_player, depth, alpha, beta):
         winner = board.has_winner()
         if winner == self.player:
-            return Choice(board.last_move(), 10 - depth, depth)
+            return Choice(None, 10 - depth, depth)
         elif winner == self.player.other:
-            return Choice(board.last_move(), -10 + depth, depth)
-        elif len(board.moves) == 9:
-            return Choice(board.last_move(), 0, depth)
+            return Choice(None, -10 + depth, depth)
+        elif board.is_full():
+            return Choice(None, 0, depth)
 
-        candidates = board.get_legal_moves()
-        max_choice = None
-        min_choice = None
-        for i in range(len(candidates)):
-            row = candidates[i][0]
-            col = candidates[i][1]
-            newboard = copy.deepcopy(board)
-            newboard.make_move(row, col, current_player)
+        best = None
+        for row, col in board.get_legal_moves():
+            # make/undo вместо deepcopy — перебор в десятки раз быстрее
+            board.make_move(row, col, current_player)
             result = self.alpha_beta_search(
-                newboard, not is_max, current_player.other, depth + 1, alpha, beta
+                board, not is_max, current_player.other, depth + 1, alpha, beta
             )
-            result.move = newboard.last_move()
+            board.undo_move()
+            result = Choice((row, col), result.value, result.depth)
 
             if is_max:
-                alpha = max(result.value, alpha)
-                if alpha >= beta:
-                    return result
-
-                if max_choice is None or result.value > max_choice.value:
-                    max_choice = result
+                if best is None or result.value > best.value:
+                    best = result
+                alpha = max(alpha, result.value)
             else:
-                beta = min(result.value, beta)
-                if alpha >= beta:
-                    return result
+                if best is None or result.value < best.value:
+                    best = result
+                beta = min(beta, result.value)
 
-                if min_choice is None or result.value < min_choice.value:
-                    min_choice = result
+            if alpha >= beta:
+                break
 
-        return max_choice if is_max else min_choice
+        return best
 
     def select_move(self, board):
-        choice = self.alpha_beta_search(board, True, self.player, 0, -100, 100)
-        return choice.move if choice else None
+        # На завершённой доске ходить нельзя (раньше ИИ перезаписывал победный ход игрока)
+        if board.has_winner() is not None or board.is_full():
+            return None
+        if not board.moves:
+            # На пустой доске центр и углы одинаково оптимальны — не перебираем 9! вариантов
+            return choice([(1, 1), (0, 0), (0, 2), (2, 0), (2, 2)])
+        best = self.alpha_beta_search(board, True, self.player, 0, -100, 100)
+        return best.move if best else None
 
 
 MARKER_TO_CHAR = {
@@ -106,8 +105,17 @@ class Board:
         self.moves = []
 
     def make_move(self, row, col, player):
+        if self.grid[row][col] is not None:
+            raise ValueError("Клетка уже занята")
         self.grid[row][col] = player
         self.moves.append((row, col))
+
+    def undo_move(self):
+        row, col = self.moves.pop()
+        self.grid[row][col] = None
+
+    def is_full(self):
+        return len(self.moves) == self.dimension * self.dimension
 
     def last_move(self):
         return self.moves[-1] if self.moves else None
@@ -163,6 +171,8 @@ class TicTacToeMod(loader.Module):
         "gamestart_ai": "🤖 <b>Крестики-Нолики против ИИ</b>\n<i>Нажмите кнопку ниже, чтобы начать игру!</i>",
         "not_with_yourself": "❌ Нельзя играть с самим собой!",
         "not_your_turn": "❌ Сейчас не ваш ход!",
+        "not_invited": "❌ Эта игра предназначена другому игроку!",
+        "opponent_not_found": "❌ <b>Не удалось найти соперника.</b> Укажите @username, ID или ответьте на сообщение.",
         "normal_game": (
             "<b>🎮 Крестики-Нолики</b>\n\n"
             "<i>\"{}\"</i>\n\n"
@@ -215,7 +225,7 @@ class TicTacToeMod(loader.Module):
         other_player = [k for k in game["mapping"] if k != call.from_user.id][0]
         game["turn"] = other_player
 
-        await call.edit(**self._render(call.form["uid"]))
+        await self._edit_render(call, self._render(call.form["uid"]))
 
     async def _process_click_ai(self, call: InlineCall, i: int, j: int, char: str):
         if call.form["uid"] not in self._games:
@@ -234,17 +244,17 @@ class TicTacToeMod(loader.Module):
 
         game["board"].make_move(i, j, game["human_player"])
 
-        try:
-            ai_move = game["bot"].select_move(game["board"])
-            if ai_move:
-                game["board"].make_move(
-                    *ai_move,
-                    game["ai_player"],
-                )
-        except Exception:
-            pass
+        ai_move = game["bot"].select_move(game["board"])
+        if ai_move:
+            game["board"].make_move(*ai_move, game["ai_player"])
 
-        await call.edit(**self._render_ai(call.form["uid"]))
+        await self._edit_render(call, self._render_ai(call.form["uid"]))
+
+    async def _edit_render(self, call: InlineCall, rendered):
+        if not rendered:
+            await call.answer("❌ Игра завершена или устарела!")
+            return
+        await call.edit(**rendered)
 
     def win_indexes(self, n):
         return (
@@ -391,9 +401,13 @@ class TicTacToeMod(loader.Module):
 
         return {"text": text, "reply_markup": kb}
 
-    async def inline__start_game(self, call: InlineCall):
+    async def inline__start_game(self, call: InlineCall, opponent_id: int = None):
         if call.from_user.id == self._me.id:
             await call.answer(self.strings("not_with_yourself"))
+            return
+
+        if opponent_id and call.from_user.id != opponent_id:
+            await call.answer(self.strings("not_invited"))
             return
 
         uid = call.form["uid"]
@@ -411,7 +425,7 @@ class TicTacToeMod(loader.Module):
             "score": "...|...|...",
         }
 
-        await call.edit(**self._render(uid))
+        await self._edit_render(call, self._render(uid))
 
     async def inline__start_game_ai(self, call: InlineCall):
         uid = call.form["uid"]
@@ -438,19 +452,41 @@ class TicTacToeMod(loader.Module):
                     self._games[uid]["ai_player"],
                 )
 
-        await call.edit(**self._render_ai(uid))
+        await self._edit_render(call, self._render_ai(uid))
 
-    @loader.command()
+    async def _resolve_opponent(self, message: Message, args: str, reply):
+        if reply:
+            return reply.sender_id
+        target = args.split()[0]
+        if target.lstrip("-").isdigit():
+            target = int(target)
+        try:
+            entity = await self._client.get_entity(target)
+            return entity.id
+        except Exception:
+            return None
     async def cccmd(self, message: Message):
         """[@username / ID / reply] — Играть в крестики-нолики (без аргументов — с ИИ, с аргументом/реплаем — с человеком)"""
         args = utils.get_args_raw(message)
         reply = await message.get_reply_message()
 
         if args or reply:
+            opponent_id = await self._resolve_opponent(message, args, reply)
+            if not opponent_id:
+                await utils.answer(message, self.strings("opponent_not_found"))
+                return
+            if opponent_id == self._me.id:
+                await utils.answer(message, self.strings("not_with_yourself"))
+                return
+
             await self.inline.form(
                 self.strings("gamestart"),
                 message=message,
-                reply_markup={"text": "⚔️ Играть", "callback": self.inline__start_game},
+                reply_markup={
+                    "text": "⚔️ Играть",
+                    "callback": self.inline__start_game,
+                    "args": (opponent_id,),
+                },
                 ttl=15 * 60,
                 disable_security=True,
             )

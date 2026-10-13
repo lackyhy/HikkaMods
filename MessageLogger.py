@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from telethon import events, functions
 from telethon.tl.types import Channel, Chat, User
-from telethon.utils import get_peer_id
+from telethon.utils import get_display_name, get_peer_id
 from .. import loader, utils
 
 logger = logging.getLogger(__name__)
@@ -107,13 +107,24 @@ class DeletedLoggerMod(loader.Module):
                 lambda: "Количество сообщений, хранимых в кэше памяти",
                 validator=loader.validators.Integer(minimum=100, maximum=10000),
             ),
+            loader.ConfigValue(
+                "utc_offset",
+                3,
+                lambda: "Часовой пояс для времени в логах (смещение от UTC в часах, 3 = МСК)",
+                validator=loader.validators.Integer(minimum=-12, maximum=14),
+            ),
         )
+        self._me_id = None
         self._cache = {}
         self._order = deque()
 
     async def client_ready(self, client, db):
         self.client = client
         self.db = db
+        try:
+            self._me_id = (await client.get_me()).id
+        except Exception:
+            self._me_id = None
 
         try:
             if hasattr(client, "list_event_handlers"):
@@ -176,14 +187,44 @@ class DeletedLoggerMod(loader.Module):
 
         return False
 
+    def _is_log_chat(self, chat_id) -> bool:
+        """Сообщения в самом лог-чате не кэшируем — иначе удаление логов логируется заново"""
+        target = self._get_target_chat()
+        if target in ("me", "self"):
+            return bool(self._me_id) and chat_id == self._me_id
+        return chat_id == target
+
+    def _cache_put(self, key, message):
+        """Кладёт сообщение в кэш с учётом лимита (обновление не двигает очередь)"""
+        if key not in self._cache:
+            self._order.append(key)
+        self._cache[key] = message
+
+        max_size = self.config["max_cache"]
+        while len(self._order) > max_size:
+            old_key = self._order.popleft()
+            self._cache.pop(old_key, None)
+
+    def _cache_pop(self, key):
+        msg = self._cache.pop(key, None)
+        if msg is not None:
+            try:
+                self._order.remove(key)
+            except ValueError:
+                pass
+        return msg
+
+    async def _is_own(self, msg) -> bool:
+        if getattr(msg, "out", False):
+            return True
+        return bool(self._me_id) and getattr(msg, "sender_id", None) == self._me_id
+
     async def watcher(self, message):
         """Сохраняет входящие сообщения в кольцевой кэш"""
         if not hasattr(message, "id") or not hasattr(message, "chat_id") or not message.chat_id:
             return
 
-        # Игнорируем логирование самого лог-чата во избежание рекурсии
-        target = self._get_target_chat()
-        if target != "me" and message.chat_id == target:
+        if self._is_log_chat(message.chat_id):
             return
 
         # Игнорируем чаты и пользователя из списка игнорируемых
@@ -195,14 +236,7 @@ class DeletedLoggerMod(loader.Module):
 
         key = (message.chat_id, message.id)
         if key not in self._cache:
-            self._cache[key] = message
-            self._order.append(key)
-
-            # Очищаем кэш при переполнении
-            max_size = self.config["max_cache"]
-            while len(self._order) > max_size:
-                old_key = self._order.popleft()
-                self._cache.pop(old_key, None)
+            self._cache_put(key, message)
 
     async def _get_chat_link(self, msg):
         if msg.is_private:
@@ -236,10 +270,19 @@ class DeletedLoggerMod(loader.Module):
             if username:
                 return f'<a href="tg://resolve?domain={username}">{title}</a>'
 
-            clean_id = str(msg.chat_id).replace("-100", "").replace("-", "")
-            return f'<a href="https://t.me/c/{clean_id}/{msg.id}">{title}</a>'
+            # Ссылки вида t.me/c/... работают только для супергрупп и каналов
+            chat_id_str = str(msg.chat_id)
+            if chat_id_str.startswith("-100"):
+                return f'<a href="https://t.me/c/{chat_id_str[4:]}/{msg.id}">{title}</a>'
+            return title
         except Exception:
             return utils.escape_html(str(msg.chat_id))
+
+    @staticmethod
+    def _clip(text: str, limit: int) -> str:
+        """Обрезает сырой текст ДО экранирования, чтобы не порвать HTML-сущности"""
+        text = text or ""
+        return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
 
     async def _on_edit_event(self, event):
         """Обрабатывает редактирование сообщений Telegram API"""
@@ -248,7 +291,7 @@ class DeletedLoggerMod(loader.Module):
             return
 
         target = self._get_target_chat()
-        if target != "me" and msg.chat_id == target:
+        if self._is_log_chat(msg.chat_id):
             return
 
         chat_username = None
@@ -263,19 +306,14 @@ class DeletedLoggerMod(loader.Module):
             return
 
         # Фильтрация собственных сообщений
-        if not self.config["log_self"]:
-            if getattr(msg, "out", False):
-                return
-            try:
-                me = await self.client.get_me()
-                if getattr(msg, "sender_id", None) == me.id:
-                    return
-            except Exception:
-                pass
+        if not self.config["log_self"] and await self._is_own(msg):
+            return
 
         key = (msg.chat_id, msg.id)
         old_msg = self._cache.get(key)
-        self._cache[key] = msg  # Обновляем состояние в кэше
+        # Обновляем состояние через _cache_put: раньше запись шла мимо очереди
+        # и такие сообщения никогда не вытеснялись — кэш рос бесконечно
+        self._cache_put(key, msg)
 
         if not old_msg:
             return
@@ -293,7 +331,7 @@ class DeletedLoggerMod(loader.Module):
 
         try:
             sender = await msg.get_sender()
-            sender_name = utils.escape_html(getattr(sender, "first_name", "Неизвестный"))
+            sender_name = utils.escape_html(get_display_name(sender) or "Неизвестный")
             sender_id = getattr(sender, "id", "Unknown")
         except Exception:
             sender_name = "Неизвестный"
@@ -307,22 +345,23 @@ class DeletedLoggerMod(loader.Module):
             f"👤 <b>От:</b> {sender_str} - ({chat_link})"
         )
 
-        formatted_log = (
-            f"{header}\n\n"
-            f"<b>Изначально:</b>\n{utils.escape_html(old_text)}\n\n"
-            f"<b>Итог:</b>\n{utils.escape_html(new_text)}"
-        )
+        def build_log(part_limit):
+            return (
+                f"{header}\n\n"
+                f"<b>Изначально:</b>\n{utils.escape_html(self._clip(old_text, part_limit))}\n\n"
+                f"<b>Итог:</b>\n{utils.escape_html(self._clip(new_text, part_limit))}"
+            )
 
         try:
             if getattr(msg, "media", None) and not getattr(old_msg, "media", None):
                 await self.client.send_file(
                     target,
                     msg.media,
-                    caption=formatted_log[:1024],
+                    caption=build_log(300),
                     link_preview=False,
                 )
             else:
-                await self.client.send_message(target, formatted_log, link_preview=False)
+                await self.client.send_message(target, build_log(1700), link_preview=False)
         except Exception as e:
             logger.error(f"Ошибка при логировании редактирования сообщения: {e}")
 
@@ -336,13 +375,14 @@ class DeletedLoggerMod(loader.Module):
 
             # Если chat_id передан в событии
             if event_chat_id:
-                key = (event_chat_id, msg_id)
-                msg = self._cache.pop(key, None)
+                msg = self._cache_pop((event_chat_id, msg_id))
             else:
-                # Если chat_id пустой (часто бывает при удалении в ЛС)
-                for c_id, m_id in self._cache:
-                    if m_id == msg_id:
-                        msg = self._cache.pop((c_id, m_id), None)
+                # chat_id пустой бывает только для ЛС и обычных групп: у них общая
+                # нумерация сообщений. Каналы/супергруппы (-100...) нумеруются
+                # отдельно, их ID могут совпасть — такие чаты не рассматриваем.
+                for c_id, m_id in list(self._cache):
+                    if m_id == msg_id and not str(c_id).startswith("-100"):
+                        msg = self._cache_pop((c_id, m_id))
                         break
 
             if not msg:
@@ -362,20 +402,13 @@ class DeletedLoggerMod(loader.Module):
                 continue
 
             # Фильтрация собственных сообщений
-            if not self.config["log_self"]:
-                if getattr(msg, "out", False):
-                    continue
-                try:
-                    me = await self.client.get_me()
-                    if getattr(msg, "sender_id", None) == me.id:
-                        continue
-                except Exception:
-                    pass
+            if not self.config["log_self"] and await self._is_own(msg):
+                continue
 
             # Получаем отправителя и чат
             try:
                 sender = await msg.get_sender()
-                sender_name = utils.escape_html(getattr(sender, "first_name", "Неизвестный"))
+                sender_name = utils.escape_html(get_display_name(sender) or "Неизвестный")
                 sender_id = getattr(sender, "id", "Unknown")
             except Exception:
                 sender_name = "Неизвестный"
@@ -389,7 +422,7 @@ class DeletedLoggerMod(loader.Module):
                 f"👤 <b>От:</b> {sender_str} - ({chat_link})"
             )
 
-            msk_tz = datetime.timezone(datetime.timedelta(hours=3))
+            msk_tz = datetime.timezone(datetime.timedelta(hours=self.config["utc_offset"]))
 
             sent_time_str = "Неизвестно"
             if hasattr(msg, "date") and msg.date:
@@ -428,18 +461,18 @@ class DeletedLoggerMod(loader.Module):
                             pass
                 elif msg.media:
                     caption = (
-                        f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(msg.raw_text)}{time_footer}"
+                        f"{header}\n💬 <b>Подпись:</b> {utils.escape_html(self._clip(msg.raw_text, 500))}{time_footer}"
                         if msg.raw_text
                         else f"{header}{time_footer}"
                     )
                     await self.client.send_file(
                         target,
                         msg.media,
-                        caption=caption[:1024],
+                        caption=caption,
                         link_preview=False,
                     )
                 elif msg.raw_text:
-                    text = f"{header}\n💬 <b>Текст:</b>\n{utils.escape_html(msg.raw_text)}{time_footer}"
+                    text = f"{header}\n💬 <b>Текст:</b>\n{utils.escape_html(self._clip(msg.raw_text, 3300))}{time_footer}"
                     await self.client.send_message(target, text, link_preview=False)
             except Exception as e:
                 logger.error(f"Ошибка при пересылке удаленного сообщения: {e}")
@@ -540,11 +573,6 @@ class DeletedLoggerMod(loader.Module):
 
     @loader.command(ru_doc="[ID / @username / reply] — Добавить или удалить чат/ЛС из списка игнорируемых")
     async def ignorechat(self, message):
-        """[ID / @username / reply] — Add or remove a chat/PM from ignored list"""
-        await self._toggle_ignore(message, action="toggle")
-
-    @loader.command(ru_doc="[ID / @username / reply] — Добавить или удалить чат/ЛС из списка игнорируемых")
-    async def ignore_chat(self, message):
         """[ID / @username / reply] — Add or remove a chat/PM from ignored list"""
         await self._toggle_ignore(message, action="toggle")
 
