@@ -1,4 +1,5 @@
 # meta developer: @lackyhyyy666
+# scope: inline
 
 import asyncio
 import html
@@ -22,10 +23,24 @@ class KissMod(loader.Module):
         "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
         "config_gender": "Пол владельца для RP-команд",
         "config_allowed_users": "ID или юзернеймы пользователей (через запятую/пробел), которым разрешено использовать RP-команды модуля",
+        "config_allowed_chats": "ID или юзернеймы чатов/групп (через запятую/пробел), в которых всем участникам разрешено использовать RP-команды (* для всех групп)",
+        "config_ask_gender": "Спрашивать пол пользователя при первом вызове RP-команды, если он ещё не указан",
+        "config_user_genders": "Гендеры для разрешённых пользователей в формате ID:пол или @username:пол (например: 123456789: ж, @friend: женский)",
+    }
+
+    strings_ru = {
+        "no_target": "<b>⚠️ Укажите пользователя (@username/ID) или ответьте на его сообщение!</b>",
+        "no_two_targets": "<b>⚠️ Укажите двух пользователей или ответьте на сообщение!</b>",
+        "config_gender": "Пол владельца для RP-команд",
+        "config_allowed_users": "ID или юзернеймы пользователей (через запятую/пробел), которым разрешено использовать RP-команды модуля",
+        "config_allowed_chats": "ID или юзернеймы чатов/групп (через запятую/пробел), в которых всем участникам разрешено использовать RP-команды (* для всех групп)",
+        "config_ask_gender": "Спрашивать пол пользователя при первом вызове RP-команды, если он ещё не указан",
         "config_user_genders": "Гендеры для разрешённых пользователей в формате ID:пол или @username:пол (например: 123456789: ж, @friend: женский)",
     }
 
     def __init__(self):
+        self._pending_commands = {}
+        self._memory_db = {}
         self.config = loader.ModuleConfig(
             loader.ConfigValue(
                 "gender",
@@ -40,6 +55,18 @@ class KissMod(loader.Module):
                 validator=loader.validators.String(),
             ),
             loader.ConfigValue(
+                "allowed_chats",
+                "",
+                lambda: self.strings("config_allowed_chats"),
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "ask_gender",
+                True,
+                lambda: self.strings("config_ask_gender"),
+                validator=loader.validators.Boolean(),
+            ),
+            loader.ConfigValue(
                 "user_genders",
                 "",
                 lambda: self.strings("config_user_genders"),
@@ -49,11 +76,77 @@ class KissMod(loader.Module):
 
     async def client_ready(self, client, db):
         self._client = client
+        self.db = db
         try:
             me = await client.get_me()
             self.tg_id = me.id
         except Exception:
             pass
+
+    def _db_get(self, key, default=None):
+        if hasattr(self, "get") and callable(self.get):
+            try:
+                res = self.get(key, default)
+                if res is not None:
+                    return res
+            except Exception:
+                pass
+        db = getattr(self, "db", getattr(self, "_db", None))
+        if db and hasattr(db, "get"):
+            try:
+                res = db.get(self.strings["name"], key, default)
+                if res is not None:
+                    return res
+            except Exception:
+                pass
+        return getattr(self, "_memory_db", {}).get(key, default)
+
+    def _db_set(self, key, value):
+        if not hasattr(self, "_memory_db"):
+            self._memory_db = {}
+        self._memory_db[key] = value
+
+        if hasattr(self, "set") and callable(self.set):
+            try:
+                self.set(key, value)
+                return
+            except Exception:
+                pass
+        db = getattr(self, "db", getattr(self, "_db", None))
+        if db and hasattr(db, "set"):
+            try:
+                db.set(self.strings["name"], key, value)
+            except Exception:
+                pass
+
+    def _get_saved_genders(self) -> dict:
+        data = self._db_get("user_genders_db", {})
+        if not isinstance(data, dict):
+            return {}
+        return data
+
+    def _get_saved_gender(self, user_id: int, username: str = None) -> str:
+        genders = self._get_saved_genders()
+        if user_id:
+            if user_id in genders:
+                return genders[user_id]
+            if str(user_id) in genders:
+                return genders[str(user_id)]
+        if username:
+            u = username.lower().lstrip("@")
+            if u in genders:
+                return genders[u]
+            if f"@{u}" in genders:
+                return genders[f"@{u}"]
+        return None
+
+    def _set_saved_gender(self, user_id: int, gender: str, username: str = None):
+        genders = self._get_saved_genders()
+        if user_id:
+            genders[str(user_id)] = gender
+        if username:
+            genders[username.lower().lstrip("@")] = gender
+        self._db_set("user_genders_db", genders)
 
     def _get_rp_map(self):
         if not hasattr(self, "_rp_map") or not self._rp_map:
@@ -61,8 +154,77 @@ class KissMod(loader.Module):
             for attr in dir(self):
                 if attr.endswith("cmd") and callable(getattr(self, attr)):
                     cmd_name = attr[:-3]
-                    self._rp_map[cmd_name] = getattr(self, attr)
+                    if cmd_name not in ["kisschat", "kissgender"]:
+                        self._rp_map[cmd_name] = getattr(self, attr)
         return self._rp_map
+
+    def _is_chat_allowed(self, message: Message) -> bool:
+        raw_chats = self.config["allowed_chats"]
+        if not raw_chats:
+            return False
+
+        if not (message.is_group or message.is_channel):
+            return False
+
+        if isinstance(raw_chats, str) and raw_chats.strip() in ["*", "all", "все"]:
+            return True
+
+        chat_id = getattr(message, "chat_id", None)
+        chat = getattr(message, "chat", None)
+        chat_username = getattr(chat, "username", None) if chat else None
+        if chat_username:
+            chat_username = chat_username.lower().lstrip("@")
+
+        allowed_chat_ids = set()
+        allowed_chat_usernames = set()
+
+        items = raw_chats if isinstance(raw_chats, (list, tuple)) else re.split(r"[,\s]+", str(raw_chats).strip())
+        for item in items:
+            s = str(item).strip()
+            if not s:
+                continue
+            s_clean = re.sub(r"^(?:https?://)?(?:t\.me/)?", "", s).strip()
+            if s_clean in ["*", "all", "все"]:
+                return True
+            if s_clean.lstrip("-").isdigit():
+                val = int(s_clean)
+                allowed_chat_ids.add(val)
+                raw_digits = abs(val)
+                s_digits = str(raw_digits)
+                if s_digits.startswith("100"):
+                    try:
+                        stripped = int(s_digits[3:])
+                        allowed_chat_ids.add(stripped)
+                        allowed_chat_ids.add(-stripped)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        allowed_chat_ids.add(int(f"-100{s_digits}"))
+                    except Exception:
+                        pass
+            else:
+                allowed_chat_usernames.add(s_clean.lstrip("@").lower())
+
+        if chat_id:
+            if chat_id in allowed_chat_ids:
+                return True
+            raw_cid = abs(chat_id)
+            if raw_cid in allowed_chat_ids or -raw_cid in allowed_chat_ids:
+                return True
+            s_cid = str(raw_cid)
+            if s_cid.startswith("100"):
+                try:
+                    c_short = int(s_cid[3:])
+                    if c_short in allowed_chat_ids or -c_short in allowed_chat_ids:
+                        return True
+                except Exception:
+                    pass
+
+        if chat_username and chat_username in allowed_chat_usernames:
+            return True
+
+        return False
 
     def _is_allowed(self, message: Message) -> bool:
         if getattr(message, "out", False):
@@ -76,6 +238,9 @@ class KissMod(loader.Module):
             getattr(self, "_client", None), "tg_id", None
         )
         if owner_id and sender_id == owner_id:
+            return True
+
+        if self._is_chat_allowed(message):
             return True
 
         raw_allowed = self.config["allowed_users"]
@@ -95,6 +260,7 @@ class KissMod(loader.Module):
                     clean_sub = sub.strip()
                     if not clean_sub:
                         continue
+                    clean_sub = re.sub(r"^(?:https?://)?(?:t\.me/)?", "", clean_sub).strip()
                     if clean_sub.lstrip("-").isdigit():
                         allowed_set.add(int(clean_sub))
                     else:
@@ -105,41 +271,56 @@ class KissMod(loader.Module):
 
         sender = getattr(message, "sender", None)
         username = getattr(sender, "username", None) if sender else None
-        if username and username.lower() in allowed_usernames:
+        if username and username.lower().lstrip("@") in allowed_usernames:
             return True
 
         return False
 
-    @loader.watcher()
-    async def watcher(self, message: Message):
-        if not isinstance(message, Message):
-            return
-        if getattr(message, "out", False):
-            return
+    def _has_known_gender(self, sender) -> bool:
+        if not sender:
+            return True
 
-        if not self._is_allowed(message):
-            return
+        sender_id = getattr(sender, "id", None)
+        username = getattr(sender, "username", None)
+        if username:
+            username = username.lower().lstrip("@")
 
-        text = message.raw_text or message.text or ""
-        if not text:
-            return
+        saved = self._get_saved_gender(sender_id, username)
+        if saved in ["мужской", "женский"]:
+            return True
 
-        prefix = self.get_prefix() if hasattr(self, "get_prefix") else "."
-        if not text.startswith(prefix):
-            return
+        raw_user_genders = self.config["user_genders"]
+        if raw_user_genders:
+            items = []
+            if isinstance(raw_user_genders, str):
+                items = re.split(r"[,\n;]+", raw_user_genders.strip())
+            elif isinstance(raw_user_genders, (list, tuple)):
+                items = raw_user_genders
 
-        body = text[len(prefix):].strip()
-        if not body:
-            return
+            for item in items:
+                if ":" in str(item):
+                    user_part, gender_part = str(item).split(":", 1)
+                    user_part = user_part.strip().lower().lstrip("@")
+                    g_val = gender_part.strip().lower()
 
-        cmd_name = body.split()[0].lower()
-        rp_map = self._get_rp_map()
-        func = rp_map.get(cmd_name)
-        if func:
-            try:
-                await func(message)
-            except Exception as e:
-                logger.error(f"[KissMod] watcher execution error for {cmd_name}: {e}")
+                    match = False
+                    if sender_id and user_part.lstrip("-").isdigit() and int(user_part) == sender_id:
+                        match = True
+                    elif username and user_part == username:
+                        match = True
+
+                    if match and g_val in ["ж", "женский", "female", "f", "м", "мужской", "male", "m"]:
+                        return True
+
+        owner_id = getattr(self, "tg_id", None) or getattr(
+            getattr(self, "_client", None), "tg_id", None
+        )
+        if owner_id and sender_id == owner_id:
+            cfg_g = str(self.config["gender"]).lower().strip()
+            if cfg_g in ["мужской", "женский"]:
+                return True
+
+        return False
 
     def _get_gender_for_sender(self, sender) -> str:
         if not sender:
@@ -153,6 +334,10 @@ class KissMod(loader.Module):
         owner_id = getattr(self, "tg_id", None) or getattr(
             getattr(self, "_client", None), "tg_id", None
         )
+
+        saved = self._get_saved_gender(sender_id, username)
+        if saved:
+            return saved
 
         raw_user_genders = self.config["user_genders"]
         if raw_user_genders:
@@ -186,6 +371,266 @@ class KissMod(loader.Module):
             return str(self.config["gender"]).lower().strip()
 
         return str(self.config["gender"]).lower().strip()
+
+    async def _ask_gender(self, message: Message, sender):
+        sender_id = getattr(message, "sender_id", None) or (getattr(sender, "id", None) if sender else None)
+        sender_name = utils.escape_html(get_display_name(sender)) if sender else "Пользователь"
+        sender_link = f'<a href="tg://user?id={sender_id}">{sender_name}</a>' if sender_id else sender_name
+
+        prompt_text = (
+            f"👋 <b>{sender_link}</b>, вы используете RP-команду впервые!\n\n"
+            "Укажите ваш пол для правильных окончаний глаголов (<i>поцеловал / поцеловала</i>):"
+        )
+
+        inline_sent = False
+        if hasattr(self, "inline") and self.inline:
+            try:
+                await self.inline.form(
+                    text=prompt_text,
+                    message=message,
+                    reply_markup=[
+                        [
+                            {
+                                "text": "👨 Мужской",
+                                "callback": self._gender_callback,
+                                "args": (sender_id, "мужской"),
+                            },
+                            {
+                                "text": "👩 Женский",
+                                "callback": self._gender_callback,
+                                "args": (sender_id, "женский"),
+                            },
+                        ]
+                    ],
+                    always_allow=True,
+                )
+                inline_sent = True
+            except Exception as e:
+                logger.warning(f"[KissMod] inline.form failed: {e}")
+
+        if not inline_sent:
+            fallback_text = (
+                f"{prompt_text}\n\n"
+                "👉 <b>Ответьте на это сообщение:</b> <code>м</code> (мужской) или <code>ж</code> (женский)"
+            )
+            prompt_msg = await utils.answer(message, fallback_text)
+            if sender_id and sender_id in self._pending_commands:
+                self._pending_commands[sender_id]["prompt_msg"] = prompt_msg
+
+    async def _gender_callback(self, call, target_user_id: int, gender: str):
+        from_user = getattr(call, "from_user", None)
+        user_id = getattr(from_user, "id", None)
+        if not user_id or user_id != int(target_user_id):
+            await call.answer("❌ Это выбор не для вас!", show_alert=True)
+            return
+
+        username = getattr(from_user, "username", None)
+        self._set_saved_gender(int(target_user_id), gender, username)
+        await call.answer(f"✅ Выбран {gender} пол!", show_alert=False)
+
+        pending = self._pending_commands.pop(int(target_user_id), None)
+
+        try:
+            await call.delete()
+        except Exception:
+            try:
+                await call.edit(f"✅ Пол сохранён: <b>{gender}</b>")
+            except Exception:
+                pass
+
+        if pending:
+            orig_msg = pending["message"]
+            func = pending["func"]
+            try:
+                await func(orig_msg)
+            except Exception as e:
+                logger.error(f"[KissMod] Pending command execution error: {e}")
+
+    @loader.command(
+        ru_doc="— Включить/выключить доступ к RP-командам для текущей группы",
+        en_doc="— Enable/disable access to RP commands for current group",
+    )
+    async def kisschatcmd(self, message: Message):
+        """Включить/выключить доступ к RP-командам для текущей группы"""
+        if not (message.is_group or message.is_channel):
+            await utils.answer(message, "<b>⚠️ Эта команда работает только в группах!</b>")
+            return
+
+        chat_id_str = str(message.chat_id)
+        raw_chats = self.config["allowed_chats"]
+        current_chats = []
+        if raw_chats:
+            if isinstance(raw_chats, str):
+                current_chats = [c.strip() for c in re.split(r"[,\s]+", raw_chats.strip()) if c.strip()]
+            elif isinstance(raw_chats, (list, tuple)):
+                current_chats = [str(c).strip() for c in raw_chats if str(c).strip()]
+
+        if chat_id_str in current_chats:
+            current_chats.remove(chat_id_str)
+            self.config["allowed_chats"] = ", ".join(current_chats)
+            await utils.answer(message, "<b>❌ RP-команды выключены для этой группы!</b>")
+        else:
+            current_chats.append(chat_id_str)
+            self.config["allowed_chats"] = ", ".join(current_chats)
+            await utils.answer(
+                message,
+                "<b>✅ RP-команды включены для этой группы!</b>\n"
+                "<i>Все участники теперь могут использовать RP-команды. При первом вызове бот спросит их пол.</i>"
+            )
+
+    @loader.command(
+        ru_doc="[м/ж] — Установить или изменить свой гендер для RP-команд",
+        en_doc="[m/f] — Set or change your gender for RP commands",
+    )
+    async def kissgendercmd(self, message: Message):
+        """[м/ж] — Установить или изменить свой гендер для RP-команд"""
+        args = utils.get_args_raw(message).strip().lower()
+        sender = await message.get_sender() if hasattr(message, "get_sender") else getattr(message, "sender", None)
+        sender_id = getattr(message, "sender_id", None) or (getattr(sender, "id", None) if sender else None)
+
+        if not sender_id:
+            return
+
+        if not args:
+            cur = self._get_gender_for_sender(sender)
+            await utils.answer(
+                message,
+                f"👤 <b>Ваш текущий пол:</b> <code>{cur}</code>\n\n"
+                "Чтобы изменить: <code>.kissgender м</code> или <code>.kissgender ж</code>"
+            )
+            return
+
+        gender = None
+        if args in ["м", "муж", "мужской", "парень", "male", "m", "1"]:
+            gender = "мужской"
+        elif args in ["ж", "жен", "женский", "девушка", "female", "f", "2"]:
+            gender = "женский"
+        elif args in ["дефолт", "по умолчанию", "default", "0"]:
+            gender = "по умолчанию"
+
+        if not gender:
+            await utils.answer(
+                message,
+                "⚠️ Укажите пол: <code>.kissgender м</code> (мужской) или <code>.kissgender ж</code> (женский)"
+            )
+            return
+
+        username = getattr(sender, "username", None) if sender else None
+        self._set_saved_gender(sender_id, gender, username)
+        await utils.answer(message, f"✅ Ваш пол успешно установлен: <b>{gender}</b>!")
+
+    @loader.watcher()
+    async def watcher(self, message: Message):
+        if not isinstance(message, Message):
+            return
+        if getattr(message, "out", False):
+            return
+
+        sender_id = getattr(message, "sender_id", None)
+        text = message.raw_text or message.text or ""
+        text_clean = text.strip()
+
+        # 1. Проверяем, отвечает ли пользователь на текстовый запрос пола
+        if sender_id and sender_id in self._pending_commands:
+            now = asyncio.get_event_loop().time()
+            if now - self._pending_commands[sender_id].get("time", 0) > 300:
+                self._pending_commands.pop(sender_id, None)
+            else:
+                detected = None
+                t_low = text_clean.lower()
+                if t_low in ["м", "муж", "мужской", "парень", "male", "m", "1"]:
+                    detected = "мужской"
+                elif t_low in ["ж", "жен", "женский", "девушка", "female", "f", "2"]:
+                    detected = "женский"
+
+                if detected:
+                    sender = await message.get_sender() if hasattr(message, "get_sender") else getattr(message, "sender", None)
+                    username = getattr(sender, "username", None)
+                    self._set_saved_gender(sender_id, detected, username)
+
+                    pending = self._pending_commands.pop(sender_id, None)
+                    if pending:
+                        prompt_msg = pending.get("prompt_msg")
+                        if prompt_msg:
+                            try:
+                                await prompt_msg.delete()
+                            except Exception:
+                                pass
+                        try:
+                            await message.delete()
+                        except Exception:
+                            pass
+                        orig_msg = pending["message"]
+                        func = pending["func"]
+                        try:
+                            await func(orig_msg)
+                        except Exception as e:
+                            logger.error(f"[KissMod] Pending command execution error: {e}")
+                    return
+
+        if not text:
+            return
+
+        prefixes = (".", "!")
+        if hasattr(self, "get_prefix"):
+            try:
+                p = self.get_prefix()
+                if isinstance(p, (list, tuple, set)):
+                    prefixes = tuple(p)
+                elif isinstance(p, str) and p:
+                    prefixes = (p,)
+            except Exception:
+                pass
+
+        matched_prefix = None
+        for p in prefixes:
+            if text.startswith(p):
+                matched_prefix = p
+                break
+
+        if not matched_prefix:
+            return
+
+        body = text[len(matched_prefix):].strip()
+        if not body:
+            return
+
+        cmd_name = body.split()[0].lower()
+
+        if not self._is_allowed(message):
+            return
+
+        # Специальная команда смены гендера для участников
+        if cmd_name in ["kissgender", "rpgender"]:
+            try:
+                await self.kissgendercmd(message)
+            except Exception as e:
+                logger.error(f"[KissMod] kissgender error: {e}")
+            return
+
+        rp_map = self._get_rp_map()
+        func = rp_map.get(cmd_name)
+        if not func:
+            return
+
+        sender = await message.get_sender() if hasattr(message, "get_sender") else getattr(message, "sender", None)
+
+        # 2. Если включен опрос пола и пол ещё не известен — спрашиваем пол
+        if self.config["ask_gender"] and not self._has_known_gender(sender):
+            self._pending_commands[sender_id] = {
+                "message": message,
+                "func": func,
+                "time": asyncio.get_event_loop().time(),
+                "cmd_name": cmd_name,
+            }
+            await self._ask_gender(message, sender)
+            return
+
+        # 3. Выполняем RP-команду
+        try:
+            await func(message)
+        except Exception as e:
+            logger.error(f"[KissMod] watcher execution error for {cmd_name}: {e}")
 
     def _format_verb(self, verb: str, sender=None) -> str:
         gender = self._get_gender_for_sender(sender)

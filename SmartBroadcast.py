@@ -28,6 +28,8 @@ class SmartBroadcastMod(loader.Module):
         "not_a_group": "<b>⚠️ Команда .sba с пингом работает только в группах и супергруппах!</b>",
         "access_denied": "<b>❌ У вас нет доступа к использованию модуля объявлений.</b>",
         "config_allowed_users": "ID пользователей через запятую или пробел, которым разрешено использовать .sb и .sba",
+        "config_ignored_users": "Юзернеймы (@username или username) или ID через запятую или пробел, которых НЕ нужно пинговать при .sba",
+        "config_tag_sender": "Добавлять тег автора (@username) в конец объявления",
         "config_batch_size": "Количество участников в одном пинг-сообщении",
         "config_delay": "Задержка в секундах между отправкой пинг-сообщений",
         "config_announcement_prefix": "Заголовок объявления (HTML)",
@@ -44,6 +46,13 @@ class SmartBroadcastMod(loader.Module):
         ),
         "not_a_group": "<b>⚠️ Команда .sba с пингом работает только в группах и супергруппах!</b>",
         "access_denied": "<b>❌ У вас нет доступа к использованию модуля объявлений.</b>",
+        "config_allowed_users": "ID пользователей через запятую или пробел, которым разрешено использовать .sb и .sba",
+        "config_ignored_users": "Юзернеймы (@username или username) или ID через запятую или пробел, которых НЕ нужно пинговать при .sba",
+        "config_tag_sender": "Добавлять тег автора (@username) в конец объявления",
+        "config_batch_size": "Количество участников в одном пинг-сообщении",
+        "config_delay": "Задержка в секундах между отправкой пинг-сообщений",
+        "config_announcement_prefix": "Заголовок объявления (HTML)",
+        "config_delete_command": "Удалять исходное сообщение с командой (.sb / .sba)",
     }
 
     def __init__(self):
@@ -53,6 +62,18 @@ class SmartBroadcastMod(loader.Module):
                 "",
                 lambda: self.strings("config_allowed_users"),
                 validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "ignored_users",
+                "",
+                lambda: self.strings("config_ignored_users"),
+                validator=loader.validators.String(),
+            ),
+            loader.ConfigValue(
+                "tag_sender",
+                True,
+                lambda: self.strings("config_tag_sender"),
+                validator=loader.validators.Boolean(),
             ),
             loader.ConfigValue(
                 "batch_size",
@@ -113,6 +134,55 @@ class SmartBroadcastMod(loader.Module):
 
         return sender_id in allowed_set
 
+    def _get_ignored_data(self):
+        """Возвращает множества ID и юзернеймов для игнорирования пинга"""
+        raw_ignored = self.config["ignored_users"]
+        ignored_ids = set()
+        ignored_usernames = set()
+
+        if not raw_ignored:
+            return ignored_ids, ignored_usernames
+
+        if isinstance(raw_ignored, (int, str)):
+            raw_ignored = [raw_ignored]
+
+        for item in raw_ignored:
+            if isinstance(item, int):
+                ignored_ids.add(item)
+            elif isinstance(item, str):
+                for sub in re.split(r"[,\s]+", item.strip()):
+                    sub_clean = sub.strip()
+                    if not sub_clean:
+                        continue
+                    # Удаляем префиксы ссылок t.me и leading @
+                    sub_clean = re.sub(r"^(?:https?://)?(?:t\.me/)?", "", sub_clean).strip()
+                    if not sub_clean:
+                        continue
+                    if sub_clean.lstrip("-").isdigit():
+                        ignored_ids.add(int(sub_clean))
+                    else:
+                        ignored_usernames.add(sub_clean.lstrip("@").lower())
+
+        return ignored_ids, ignored_usernames
+
+    def _is_user_ignored(self, user, ignored_ids=None, ignored_usernames=None) -> bool:
+        """Проверяет, находится ли пользователь в списке игнорируемых"""
+        if not user:
+            return False
+
+        if ignored_ids is None or ignored_usernames is None:
+            ignored_ids, ignored_usernames = self._get_ignored_data()
+
+        user_id = getattr(user, "id", None)
+        if user_id and user_id in ignored_ids:
+            return True
+
+        username = getattr(user, "username", None)
+        if username and username.lower().lstrip("@") in ignored_usernames:
+            return True
+
+        return False
+
     async def _get_chat_users(self, message):
         """Получает список реальных участников чата"""
         users = []
@@ -125,13 +195,31 @@ class SmartBroadcastMod(loader.Module):
             except Exception:
                 chat = message.chat_id
 
+        ignored_ids, ignored_usernames = self._get_ignored_data()
+
+        # Также не пингуем автора команды
+        sender_id = getattr(message, "sender_id", None)
+        if sender_id:
+            ignored_ids.add(sender_id)
+
+        sender = getattr(message, "sender", None)
+        if sender and getattr(sender, "username", None):
+            ignored_usernames.add(sender.username.lower().lstrip("@"))
+
+        def should_skip(u) -> bool:
+            if not u:
+                return True
+            if getattr(u, "bot", False) or getattr(u, "deleted", False) or getattr(u, "is_self", False):
+                return True
+            return self._is_user_ignored(u, ignored_ids, ignored_usernames)
+
         # 1. Запрашиваем участников через get_participants
         try:
             participants = await self._client.get_participants(chat, limit=300)
             for u in participants:
                 if u.id in seen_ids:
                     continue
-                if getattr(u, "bot", False) or getattr(u, "deleted", False) or getattr(u, "is_self", False):
+                if should_skip(u):
                     continue
                 seen_ids.add(u.id)
                 users.append(u)
@@ -144,7 +232,7 @@ class SmartBroadcastMod(loader.Module):
                 async for u in self._client.iter_participants(chat, limit=300):
                     if u.id in seen_ids:
                         continue
-                    if getattr(u, "bot", False) or getattr(u, "deleted", False) or getattr(u, "is_self", False):
+                    if should_skip(u):
                         continue
                     seen_ids.add(u.id)
                     users.append(u)
@@ -155,21 +243,17 @@ class SmartBroadcastMod(loader.Module):
         if not users:
             try:
                 async for msg in self._client.iter_messages(chat, limit=200):
-                    sender = getattr(msg, "sender", None)
-                    if not sender and getattr(msg, "from_id", None):
+                    msg_sender = getattr(msg, "sender", None)
+                    if not msg_sender and getattr(msg, "from_id", None):
                         try:
-                            sender = await self._client.get_entity(msg.from_id)
+                            msg_sender = await self._client.get_entity(msg.from_id)
                         except Exception:
                             pass
 
-                    if sender and isinstance(sender, types.User):
-                        if sender.id not in seen_ids and not (
-                            getattr(sender, "bot", False)
-                            or getattr(sender, "deleted", False)
-                            or getattr(sender, "is_self", False)
-                        ):
-                            seen_ids.add(sender.id)
-                            users.append(sender)
+                    if msg_sender and isinstance(msg_sender, types.User):
+                        if msg_sender.id not in seen_ids and not should_skip(msg_sender):
+                            seen_ids.add(msg_sender.id)
+                            users.append(msg_sender)
             except Exception as e:
                 logger.warning(f"[SmartBroadcast] iter_messages fallback failed: {e}")
 
@@ -268,7 +352,7 @@ class SmartBroadcastMod(loader.Module):
                 sender = None
 
         sender_tag = ""
-        if sender:
+        if sender and self.config["tag_sender"] and not self._is_user_ignored(sender):
             if getattr(sender, "username", None):
                 sender_tag = f"@{sender.username}"
             else:
